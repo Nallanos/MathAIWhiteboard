@@ -12,7 +12,7 @@
     "test": "echo \"frontend tests pending\""
   },
   "dependencies": {
-    "@excalidraw/excalidraw": "workspace:*",
+    "@excalidraw/excalidraw": "^0.18.0",
     "@mathboard/shared": "workspace:*",
     "katex": "^0.16.11",
     "react": "^18.3.1",
@@ -25,11 +25,12 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@mathboard/config": "workspace:*",
     "@types/react": "^18.2.67",
     "@types/react-dom": "^18.2.22",
     "@typescript-eslint/eslint-plugin": "^7.6.0",
     "@typescript-eslint/parser": "^7.6.0",
-    "@mathboard/config": "workspace:*",
+    "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.18",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
