@@ -1,0 +1,20 @@
+{
+  "name": "mathboard-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.12.2",
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:web\" \"pnpm dev:backend\"",
+    "dev:web": "pnpm --filter @mathboard/web dev",
+    "dev:backend": "pnpm --filter @mathboard/backend dev",
+    "typecheck": "pnpm run -r typecheck",
+    "lint": "pnpm run -r lint",
+    "test": "pnpm run -r test",
+    "build:excalidraw": "pnpm --filter @excalidraw/common exec sh -c 'rm -rf dist && node ../../scripts/buildBase.js' && pnpm --filter @excalidraw/math exec sh -c 'rm -rf dist && node ../../scripts/buildBase.js' && pnpm --filter @excalidraw/element exec sh -c 'rm -rf dist && node ../../scripts/buildBase.js' && pnpm --filter @excalidraw/excalidraw exec sh -c 'rm -rf dist && node ../../scripts/buildPackage.js'",
+    "postinstall": "pnpm run build:excalidraw"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "yarn": "^1.22.22"
+  }
+}

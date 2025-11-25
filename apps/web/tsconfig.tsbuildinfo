@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/components/AISidebar/ChatMessage.tsx","./src/components/AISidebar/InputBox.tsx","./src/components/AISidebar/index.tsx","./src/components/Collaboration/Status.tsx","./src/hooks/useAI.ts","./src/hooks/useCollab.ts","./src/lib/env.ts"],"errors":true,"version":"5.9.3"}

@@ -1,0 +1,8 @@
+{
+  "extends": "@mathboard/config/tsconfig",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist-node"
+  },
+  "include": ["vite.config.ts"]
+}

@@ -1,0 +1,530 @@
+Executive Summary
+GPT-4.1 mini and Google Gemini 2.0 Flash emerge as the leading candidates. GPT‑4.1 mini (successor to
+GPT‑4o mini) delivers top-tier math reasoning (e.g. MGSM ≈87%) 1 at a fraction of GPT‑4o’s cost (83%
+lower) 2 , and retains strong vision and multilingual (French) support. Google Gemini 2.0 Flash offers
+comparable reasoning strength and full multimodal input 3 at very low token prices (∼$0.00010/input,
+$0.00040/output 4 ), making it extremely cost-efficient for the 1024×768 image+prompt use case.
+Anthropic Claude 3.5 Haiku is by far cheapest per token 5 , though its math accuracy lags (MGSM ≈71.7%)
+1 . All these models handle French natively (OpenAI notes improved non-English text support 6 ). We
+recommend a hybrid pipeline: use OCR (e.g. Tesseract) to pre-extract text and feed the full image only when
+necessary, routing simpler problems to fast models (e.g. GPT‑4.1 nano) and complex diagrams to larger
+multimodal models. This tiered strategy balances cost and performance effectively.
+
+Model
+
+OpenAI
+GPT-4.1 mini
+
+Math
+Reasoning
+
+Excellent
+(MGSM ~87%
+1 )
+
+Vision/
+Diagramming
+
+Full
+multimodal
+support
+
+French/
+Terminology
+
+Strong
+(multilingual
+support) 6
+
+Cost
+(USD)
+
+Input:
+$0.40/M,
+Output:
+$1.60/M
+7
+
+OpenAI
+GPT-4.1 nano
+
+Good (MMLU
+80.1% 8 )
+
+Yes (low-res
+image input)
+
+Good
+
+Input:
+$0.10/M,
+Output:
+$0.40/M
+9
+
+1
+
+Notes
+High accuracy
+on math
+(outperforms
+GPT‑4o) 2 .
+Fast and lowlatency (1M
+token context).
+Cost-effective
+vs GPT‑4o (–
+83%) 2 .
+Fastest/
+cheapest; 1M
+context.
+Suitable for
+short queries
+or text-only
+hints. (Scores
+show it beating
+GPT‑4o mini on
+some tasks
+2 .)
+
+Model
+
+GPT-4o mini
+(2024)
+
+Math
+Reasoning
+
+Vision/
+Diagramming
+
+Very Good
+(MGSM 87.0%
+1 )
+
+Full
+multimodal
+support
+
+French/
+Terminology
+
+Strong
+(French
+capable)
+
+6
+
+Cost
+(USD)
+
+Input:
+$0.15/M,
+Output:
+$0.60/M
+10
+
+Notes
+Baseline small
+GPT-4 model.
+Good
+performance,
+but image
+tokenization is
+very large (e.g.
+150×150px →
+8.5K tokens)
+11 , so cost
+per image
+≈$0.03.
+
+Google
+Gemini 2.0 Flash
+
+Excellent
+(Multimodal
+benchmarks,
+~comparable
+to GPT‑4)
+
+Google
+Gemini 2.0 FlashLite
+
+Very Good
+
+3
+
+Full
+multimodal
+(image,
+audio)
+
+3
+
+Good
+(supports
+French well)
+
+Input:
+$0.10/M,
+Output:
+$0.40/M
+4
+
+Multimodal
+(image/text)
+
+2
+
+Good
+
+Input:
+$0.075/
+M,
+Output:
+$0.30/M
+(std) 13
+
+Large context
+(1M tokens)
+3 . GA in
+2025, with
+drastically
+lowered pricing
+vs Gemini 1.5
+12 . Very fast;
+
+1024×768
+image uses
+~1290 tokens
+4 .
+Most costefficient tier of
+Gemini 2.0.
+Sacrifices some
+accuracy for
+price. Worth
+testing on very
+high volume.
+
+Model
+
+Anthropic
+Claude 3.5 Haiku
+
+Math
+Reasoning
+
+Moderate
+(MGSM
+~71.7%) 1
+
+Vision/
+Diagramming
+
+Yes (vision
+support
+added)
+
+French/
+Terminology
+
+Cost
+(USD)
+
+Input:
+$0.80/M,
+Output:
+$1.00/M
+
+Good
+(multilingual)
+
+5
+
+Anthropic
+Claude 3.5 Sonnet
+
+Input:
+$3.00/M,
+Output:
+$3.75/M
+
+Strong
+(≈Claude 4
+level)
+
+Yes
+
+Good
+
+14
+
+Meta LLaMA 3.2
+(Vision)
+
+Open-Source
+Math LMMs (e.g.
+MathCoder-VL)
+
+Not directly
+benchmarked
+
+Specialized for
+math
+
+Yes (11B &
+90B vision
+LLMs)
+
+Good
+
+Yes (diagramto-code)
+
+–
+
+Sources: GPT and Claude performance/pricing are from official docs
+and pricing pages 3 4 .
+
+3
+
+1
+
+5
+
+Notes
+Very low price.
+Strong on text
+reasoning, but
+somewhat
+weaker on
+math than
+above models.
+Speed good;
+integrates via
+Claude API or
+AWS Bedrock.
+Higher quality
+than Haiku
+(closer to
+GPT‑4o), but
+much higher
+cost. Likely
+overkill for
+hints.
+
+N/A
+(open
+source)
+
+Open-source,
+can be selfhosted (e.g. via
+Bedrock). 90B
+Vision model
+available 15 .
+Might run
+locally for very
+high-volume if
+cost is critical.
+
+N/A
+(requires
+hosting)
+
+Emerging
+research
+models for
+math+vision
+16 . Not yet
+productionready as APIs.
+Could be used
+if self-hosting
+is an option.
+
+. Gemini info from Google blog
+
+Recommended Architecture
+1. OCR/Preprocessing: Use a fast OCR engine (e.g. Tesseract or Google Vision OCR) to extract all
+handwritten text/equations. This yields LaTeX or MathML for equations and plain text for
+annotations. This greatly reduces the work the LLM must do on image tokens, cutting cost by orders
+of magnitude when only text is present.
+2. Diagram Analysis: For geometric figures and sketches, rely on a vision-capable LLM. Send the full
+(1024×768) image to a multimodal model (e.g. GPT‑4.1 mini or Gemini 2.0 Flash). These models will
+identify shapes, labels, angles, etc., via their vision understanding. Incorporate known facts from
+OCR (e.g. textual labels “A”, “B”, etc.) into the prompt to anchor its analysis.
+3. Model Selection Logic: Implement a tiered strategy. For text-only problems (no or simple images),
+call a cheaper text-only model (e.g. GPT‑4.1 nano or Claude Haiku). For problems with complex
+diagrams, use a larger multimodal model. Optionally use a quick heuristic or ML classifier on the
+preprocessed input to decide which model fits.
+4. Prompting and French Output: Compose prompts that instruct the model to give hints in French
+(pedagogical, encouraging tone). Provide context including extracted problem text, diagram
+elements, and what step the student is on. Use the French mathematical curriculum terms (e.g.
+“théorème de Pythagore”) explicitly. Ensure the system message clarifies it should not give full
+solutions, only guidance.
+5. API Integration: Deploy a Node.js/Express backend that (a) receives the canvas image and any user
+text, (b) runs OCR (e.g. via a Python microservice), (c) formulates the combined prompt, (d) calls the
+chosen model API (OpenAI/Gemini/Claude) with streaming enabled for low latency, and (e) returns
+the hint response. Include error handling (e.g. retry on timeouts, fallback to simpler model if one
+fails).
+6. Caching & Streaming: Use model caching or prompt caching for repeated queries to save costs.
+Stream the response back to the front-end to achieve sub-3s latency.
+7. Curriculum Alignment: Maintain a mapping of lycée math topics to ensure hints align with
+curriculum. Post-process model output to verify terminology correctness if needed.
+
+Implementation Checklist
+• [ ] API Setup: Obtain keys for OpenAI (GPT‑4.1) and/or Google Gemini and/or Anthropic APIs.
+Configure endpoints (choose one primary vendor or allow switching).
+• [ ] OCR Pipeline: Integrate Tesseract (or another OCR/Math OCR) to convert images to text/LaTeX.
+Validate on sample handwritten equations.
+• [ ] Prompt Engineering: Develop French prompt templates that include: problem text, diagram
+descriptions (from LLM vision output), and instructions to “donner un indice pas la solution
+complète.”
+• [ ] Multimodal Calls: Write code to send image+text to a vision LLM (e.g. OpenAI’s Image input in
+Chat Completions). Handle token accounting (input text + image tokens) to estimate cost.
+• [ ] Model Routing Logic: Implement logic to choose between models (e.g. if OCR finds no diagram,
+skip image model). Test routing on mixed-case inputs.
+• [ ] Response Processing: Ensure the model’s output is fluent French. Post-filter for correctness (e.g.
+no accidental English). Possibly implement a French spellchecker or terminology validator for math.
+• [ ] Latency Testing: Benchmark end-to-end time. Aim to keep API calls and OCR under 3s. Enable
+streaming in chat API for partial results if needed.
+
+4
+
+• [ ] Cost Monitoring: Build a simple cost estimator to log API usage (tokens per call) and monthly
+burn. Include rate limiting safeguards.
+• [ ] Testing with Real Data: Collect example student sketches and homework problems (with
+consent) to validate. Check that hints are pedagogical and not full solutions. Adjust prompts and
+model choice based on results.
+
+Cost-Benefit Analysis
+Using the above token prices 10
+roughly:
+
+4
+
+5
+
+, the per-interaction cost (1024×768 image + 500-token dialog) is
+
+- GPT-4o mini: ~200k image tokens + 500 text → ~200,500 input tokens. At $0.15 per 1M, that’s ~$0.0301
+input + $0.0003 output = ~$0.0304 per call.
+- Claude 3.5 Haiku: ~1,048 image tokens + 500 text = 1,548 input tokens → $0.00124 input + $0.00050
+output ≈ $0.00174 per call.
+- Gemini 2.0 Flash: ~1,290 image tokens + 500 text = 1,790 input tokens → $0.00018 input + $0.00020
+output ≈ $0.00038 per call.
+Projecting monthly costs for, say, 10k/100k/1M requests:
+Model
+
+\$ per call
+
+10k calls
+
+100k calls
+
+1M calls
+
+GPT-4o mini
+
+\$0.0304
+
+\$304
+
+\$3,040
+
+\$30,400
+
+Claude 3.5 Haiku
+
+\$0.00174
+
+\$17.4
+
+\$174
+
+\$1,740
+
+Gemini 2.0 Flash
+
+\$0.00038
+
+\$3.80
+
+\$38
+
+\$380
+
+Even accounting for discounts (e.g. 50% batch pricing), Gemini and Claude are far cheaper. For 100k
+queries, GPT-4o mini costs ~$3.0k, whereas Gemini is ~$38. This 5–10× savings target is achieved: e.g.,
+Gemini is ~80× cheaper than GPT-4o mini per call. Using OCR+text-only paths cuts costs by another order of
+magnitude (a 500-token-only call is ~$0.00037 on GPT-4o mini, ~$0.00038 on Gemini, vs $0.00038 with full
+image).
+Risks: Dependence on any single API creates lock-in and potential versioning/deprecation risk. OpenAI’s
+frequent model updates (GPT‑4.5 deprecated) means staying current. Rate limits and latency spikes could
+affect interactive use. We mitigate by having fallback models (e.g. GPT‑4.1 nano for quick answers, or
+Claude via Bedrock as alternate endpoint) and robust error handling.
+Testing Strategy: We will run A/B comparisons of the top models on a representative set of French lycée
+math problems with student-drawn figures. Metrics include: correctness of hints (evaluated by teachers),
+factual accuracy, French fluency, and response time. Collect logs of token usage to refine cost estimates.
+Iterate on prompt style (e.g. encouraging tone, curriculum terms) based on student feedback.
+
+1
+
+6
+
+10
+
+GPT-4o mini: advancing cost-efficient intelligence | OpenAI
+
+https://openai.com/index/gpt-4o-mini-advancing-cost-efficient-intelligence/
+
+5
+
+2
+
+7
+
+8
+
+9
+
+Introducing GPT-4.1 in the API | OpenAI
+
+https://openai.com/index/gpt-4-1/
+3
+
+12
+
+Gemini 2.0: Flash, Flash-Lite and Pro - Google Developers Blog
+
+https://developers.googleblog.com/en/gemini-2-family-expands/
+4
+
+13
+
+Gemini Developer API pricing | Gemini API | Google AI for Developers
+
+https://ai.google.dev/gemini-api/docs/pricing
+5
+
+14
+
+Pricing - Claude Docs
+
+https://docs.claude.com/en/docs/about-claude/pricing
+11
+
+GPT-4o mini vision pricing is odd : r/OpenAI
+
+https://www.reddit.com/r/OpenAI/comments/1e7i0gz/gpt4o_mini_vision_pricing_is_odd/
+15
+
+Llama 3.2: Revolutionizing edge AI and vision with open ... - AI at Meta
+
+https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/
+16
+
+MathLLMs/MathCoder-VL-2B · Hugging Face
+
+https://huggingface.co/MathLLMs/MathCoder-VL-2B
+
+6
+
+

@@ -1,0 +1,15 @@
+{
+  "extends": "@mathboard/config/tsconfig",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "baseUrl": "./",
+    "paths": {
+      "@mathboard/shared": ["../../packages/shared/src"],
+      "@mathboard/shared/*": ["../../packages/shared/src/*"]
+    },
+    "rootDirs": ["src", "../../packages/shared/src"]
+  },
+  "include": ["src"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "@mathboard/config/tsconfig",
+  "compilerOptions": {
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}

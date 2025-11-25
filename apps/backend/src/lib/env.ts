@@ -1,0 +1,49 @@
+import 'dotenv/config';
+
+export interface EnvConfig {
+  port: number;
+  corsOrigin: string | RegExp | (string | RegExp)[];
+  geminiKey: string;
+  openaiKey?: string;
+  anthropicKey?: string;
+  stripeSecretKey: string;
+  databaseUrl: string;
+  captureStorageDir: string;
+  captureImageMaxBytes: number;
+  captureSceneMaxBytes: number;
+}
+
+export function loadEnv(): EnvConfig {
+  const {
+    PORT = '4000',
+    CORS_ORIGIN = 'http://localhost:5173',
+    GEMINI_API_KEY,
+    OPENAI_API_KEY,
+    ANTHROPIC_API_KEY,
+    STRIPE_SECRET_KEY,
+    DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/whiteboardai',
+    CAPTURE_STORAGE_DIR = './data/captures',
+    CAPTURE_IMAGE_MAX_BYTES = '5242880',
+    CAPTURE_SCENE_MAX_BYTES = '1048576'
+  } = process.env;
+
+  if (!STRIPE_SECRET_KEY) throw new Error('Missing STRIPE_SECRET_KEY');
+  if (!GEMINI_API_KEY) {
+    throw new Error('Set GEMINI_API_KEY to enable AI analysis');
+  }
+
+  return {
+    port: parseInt(PORT, 10),
+    corsOrigin: CORS_ORIGIN.includes(',') ? CORS_ORIGIN.split(',') : CORS_ORIGIN,
+    geminiKey: GEMINI_API_KEY,
+    openaiKey: OPENAI_API_KEY,
+    anthropicKey: ANTHROPIC_API_KEY,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    databaseUrl: DATABASE_URL,
+    captureStorageDir: CAPTURE_STORAGE_DIR,
+    captureImageMaxBytes: parseInt(CAPTURE_IMAGE_MAX_BYTES, 10),
+    captureSceneMaxBytes: parseInt(CAPTURE_SCENE_MAX_BYTES, 10)
+  };
+}
+
+
