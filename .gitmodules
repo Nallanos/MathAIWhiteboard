@@ -1,0 +1,3 @@
+[submodule "apps/excalidraw"]
+	path = apps/excalidraw
+	url = https://github.com/Nallanos/MathAIWhiteboard.git
