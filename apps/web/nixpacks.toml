@@ -1,0 +1,17 @@
+# Nixpacks configuration for Frontend on Railway
+# Builds a static Vite app and serves with nginx
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm", "nginx"]
+
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = [
+  "pnpm --filter @mathboard/shared build",
+  "pnpm --filter @mathboard/web build"
+]
+
+[start]
+cmd = "nginx -c /app/apps/web/nginx.conf -g 'daemon off;'"

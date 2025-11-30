@@ -1,5 +1,5 @@
 import { exportToCanvas } from '@excalidraw/excalidraw';
-import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw';
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/dist/types/excalidraw/types';
 import type { SceneSnapshot, CaptureImagePayload } from '@mathboard/shared';
 
 export interface CaptureSnapshot {
@@ -15,7 +15,7 @@ export async function buildCaptureSnapshot(api: ExcalidrawImperativeAPI): Promis
   const files = api.getFiles();
 
   const canvas = await exportToCanvas({
-    elements,
+    elements: [...elements] as any,
     appState,
     files,
     maxWidthOrHeight: MAX_DIMENSION,
@@ -28,7 +28,7 @@ export async function buildCaptureSnapshot(api: ExcalidrawImperativeAPI): Promis
 
   return {
     scene: {
-      elements,
+      elements: [...elements] as any,
       appState,
       files
     },

@@ -19,7 +19,11 @@ COPY apps/backend/ ./apps/backend/
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Build the backend
+# Build shared package first
+WORKDIR /app/packages/shared
+RUN pnpm build
+
+# Build the backend - shared is already built and pnpm links to it
 WORKDIR /app/apps/backend
 RUN pnpm build
 

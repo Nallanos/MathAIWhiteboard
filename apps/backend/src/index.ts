@@ -67,6 +67,11 @@ async function bootstrap() {
   app.use(requestLogger);
   app.use(express.json({ limit: '10mb' }));
 
+  // Health check endpoint for Railway
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
   // Register routes
   registerAuthRoutes({ app, authService });
   registerCaptureRoutes({ app, service: captureService, config, authMiddleware });

@@ -19,6 +19,10 @@ COPY apps/web/ ./apps/web/
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
+# Build shared package first
+WORKDIR /app/packages/shared
+RUN pnpm build
+
 # Set production API URL
 ENV VITE_BACKEND_URL=https://mathbordai.duckdns.org
 ENV VITE_WS_URL=https://mathbordai.duckdns.org

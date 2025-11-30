@@ -5,9 +5,8 @@
  * Includes collaboration features and board persistence.
  */
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Excalidraw } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/dist/types/excalidraw/types';
 import { AISidebar } from '../components/AISidebar';
@@ -16,6 +15,11 @@ import { useAI } from '../hooks/useAI';
 import { useCollab } from '../hooks/useCollab';
 import { useBoardPersistence } from '../hooks/useBoardPersistence';
 import { useAuth } from '../context/AuthContext';
+
+// Lazy load Excalidraw to avoid SSR issues
+const Excalidraw = lazy(() => 
+  import('@excalidraw/excalidraw').then(mod => ({ default: mod.Excalidraw }))
+);
 
 interface WhiteboardProps {
   boardId: string;
@@ -105,10 +109,12 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
       <main className="relative flex-1 min-w-0 min-h-0 bg-white">
         <div className="absolute inset-0">
           <div className="h-full w-full">
-            <Excalidraw
-              onChange={handleAppStateChange}
-              excalidrawAPI={(instance) => setApi(instance)}
-            />
+            <Suspense fallback={<div className="flex h-full items-center justify-center">Loading editor...</div>}>
+              <Excalidraw
+                onChange={handleAppStateChange}
+                excalidrawAPI={(instance) => setApi(instance)}
+              />
+            </Suspense>
           </div>
         </div>
         <CollaborationStatus boardId={boardId} peerCount={peerCount} />

@@ -1,3 +1,3 @@
-export * from './ai';
-export * from './board';
-export * from './user';
+export * from './ai.js';
+export * from './board.js';
+export * from './user.js';
