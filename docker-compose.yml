@@ -1,6 +1,55 @@
 version: '3.8'
 
 services:
+  # ===========================================
+  # Traefik Reverse Proxy
+  # ===========================================
+  traefik:
+    image: traefik:v3.2
+    container_name: whiteboardai-traefik
+    restart: unless-stopped
+    command:
+      # API & Dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP to HTTPS redirect
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      # Let's Encrypt SSL
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@mathbordai.duckdns.org"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # Logs
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - whiteboardai-network
+    labels:
+      # Dashboard access (optional, secured)
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`mathbordai.duckdns.org`) && PathPrefix(`/traefik`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=admin:$$apr1$$xyz$$CHANGEME"
+
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
   postgres:
     image: postgres:16-alpine
     container_name: whiteboardai-db
@@ -9,10 +58,79 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: whiteboardai
-    ports:
-      - '6543:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - whiteboardai-network
+    # No external port exposure in production
+
+  # ===========================================
+  # Backend API (Node.js)
+  # ===========================================
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: whiteboardai-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/whiteboardai
+      CORS_ORIGIN: https://mathbordai.duckdns.org
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production_please}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CAPTURE_STORAGE_DIR: /app/data/captures
+    volumes:
+      - backend_captures:/app/data/captures
+    depends_on:
+      - postgres
+    networks:
+      - whiteboardai-network
+    labels:
+      - "traefik.enable=true"
+      # API routes
+      - "traefik.http.routers.backend.rule=Host(`mathbordai.duckdns.org`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=4000"
+      # WebSocket routes for Socket.IO
+      - "traefik.http.routers.backend-ws.rule=Host(`mathbordai.duckdns.org`) && PathPrefix(`/socket.io`)"
+      - "traefik.http.routers.backend-ws.entrypoints=websecure"
+      - "traefik.http.routers.backend-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.backend-ws.service=backend"
+
+  # ===========================================
+  # Frontend (Nginx serving static build)
+  # ===========================================
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: whiteboardai-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - whiteboardai-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`mathbordai.duckdns.org`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      # Priority lower than backend API routes
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.routers.backend.priority=10"
+      - "traefik.http.routers.backend-ws.priority=10"
+
+networks:
+  whiteboardai-network:
+    driver: bridge
 
 volumes:
   postgres_data:
+  traefik_letsencrypt:
+  backend_captures:
