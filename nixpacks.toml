@@ -1,0 +1,20 @@
+# Nixpacks configuration for Railway - Backend Service
+# Deploy from repo root with this config
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = [
+  "npm install -g pnpm@9.12.2",
+  "pnpm install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+  "pnpm --filter @mathboard/shared build",
+  "pnpm --filter @mathboard/backend build"
+]
+
+[start]
+cmd = "node apps/backend/dist/index.js"
