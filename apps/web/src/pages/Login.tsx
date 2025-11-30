@@ -1,8 +1,17 @@
+/**
+ * Login Page
+ * 
+ * Public page for user authentication.
+ * Redirects to dashboard on successful login.
+ */
+
 import { useState } from 'react';
+import { useNavigate, Link } from '@tanstack/react-router';
 import { useAuth } from '../context/AuthContext';
 import { env } from '../lib/env';
 
-export function Login({ onRegisterClick }: { onRegisterClick: () => void }) {
+export function Login() {
+  const navigate = useNavigate();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,6 +37,7 @@ export function Login({ onRegisterClick }: { onRegisterClick: () => void }) {
       }
 
       login(data.token, data.user);
+      navigate({ to: '/' });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -80,9 +90,9 @@ export function Login({ onRegisterClick }: { onRegisterClick: () => void }) {
           </div>
           
           <div className="text-center">
-            <button type="button" onClick={onRegisterClick} className="text-sm text-indigo-600 hover:text-indigo-500">
+            <Link to="/register" className="text-sm text-indigo-600 hover:text-indigo-500">
               Don't have an account? Sign up
-            </button>
+            </Link>
           </div>
         </form>
       </div>

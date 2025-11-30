@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { env } from '../lib/env';
+import { setLogoutCallback } from '../lib/api';
 
 interface User {
   id: string;
@@ -43,6 +43,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
   }, []);
+
+  // Register logout callback for global 401 handling
+  useEffect(() => {
+    setLogoutCallback(logout);
+  }, [logout]);
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!user }}>

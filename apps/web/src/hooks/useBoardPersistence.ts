@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/dist/types/excalidraw/types';
 import { exportToBlob } from '@excalidraw/excalidraw';
-import { env } from '../lib/env';
+import { apiFetch } from '../lib/api';
 
 interface UseBoardPersistenceOptions {
   boardId: string | null;
@@ -23,11 +23,7 @@ export function useBoardPersistence(
 
     const loadBoard = async () => {
       try {
-        const response = await fetch(`${env.backendUrl}/api/boards/${boardId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
+        const response = await apiFetch(`/api/boards/${boardId}`, { token });
         
         if (response.ok) {
           const data = await response.json();
@@ -89,13 +85,11 @@ export function useBoardPersistence(
           console.warn('Failed to generate thumbnail', e);
         }
 
-        await fetch(`${env.backendUrl}/api/boards/${boardId}`, {
+        await apiFetch(`/api/boards/${boardId}`, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ scene: sceneData, thumbnailUrl })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scene: sceneData, thumbnailUrl }),
+          token
         });
         lastSavedDataRef.current = serialized;
       } catch (error) {

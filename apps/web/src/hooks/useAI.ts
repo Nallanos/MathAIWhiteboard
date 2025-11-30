@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/dist/types/excalidraw/types';
 import type { AIMessage, AIPromptPayload, CreateCapturePayload } from '@mathboard/shared';
-import { env } from '../lib/env';
+import { apiFetch } from '../lib/api';
 import { buildCaptureSnapshot } from '../lib/capture';
 import { convertToExcalidrawElements } from '@excalidraw/excalidraw';
 
@@ -30,9 +30,7 @@ export function useAI(
   useEffect(() => {
     if (!options.boardId || !options.token) return;
 
-    fetch(`${env.backendUrl}/api/boards/${options.boardId}/conversation`, {
-      headers: { Authorization: `Bearer ${options.token}` }
-    })
+    apiFetch(`/api/boards/${options.boardId}/conversation`, { token: options.token })
       .then((res) => res.json())
       .then((data) => {
         if (data.conversation?.id) {
@@ -46,9 +44,7 @@ export function useAI(
   useEffect(() => {
     if (!conversationId || !options.token) return;
     
-    fetch(`${env.backendUrl}/api/conversations/${conversationId}/messages`, {
-      headers: { Authorization: `Bearer ${options.token}` }
-    })
+    apiFetch(`/api/conversations/${conversationId}/messages`, { token: options.token })
       .then((res) => res.json())
       .then((data) => {
         if (data.messages) {
@@ -82,13 +78,11 @@ export function useAI(
       image: snapshot.image
     };
 
-    const response = await fetch(`${env.backendUrl}/api/captures`, {
+    const response = await apiFetch('/api/captures', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${options.token}`
-      },
-      body: JSON.stringify(payload)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      token: options.token
     });
 
 
@@ -112,9 +106,9 @@ export function useAI(
     if (!options.boardId || !options.token) return;
 
     try {
-      const res = await fetch(`${env.backendUrl}/api/boards/${options.boardId}/conversation`, {
+      const res = await apiFetch(`/api/boards/${options.boardId}/conversation`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${options.token}` }
+        token: options.token
       });
       
       if (!res.ok) throw new Error('Failed to reset conversation');
@@ -167,18 +161,16 @@ export function useAI(
       // Persist user message
       try {
         if (options.token) {
-          await fetch(`${env.backendUrl}/api/messages`, {
+          await apiFetch('/api/messages', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${options.token}`
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               conversationId,
               role: 'user',
               content: prompt,
               captureId
-            })
+            }),
+            token: options.token
           });
         }
       } catch (err) {
@@ -190,30 +182,26 @@ export function useAI(
           throw new Error('Missing token');
         }
 
-        const response = await fetch(`${env.backendUrl}/api/ai/analyze`, {
+        const response = await apiFetch('/api/ai/analyze', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${options.token}`
-          },
-          body: JSON.stringify(payload)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          token: options.token
         });
         const result = await response.json();
         
         const assistantContent = result.message ?? 'Assistant en cours de préparation…';
         
         // Persist assistant message
-        await fetch(`${env.backendUrl}/api/messages`, {
+        await apiFetch('/api/messages', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${options.token}`
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversationId,
             role: 'assistant',
             content: assistantContent
-          })
+          }),
+          token: options.token
         });
 
         setMessages((prev) => [

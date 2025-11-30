@@ -1,5 +1,13 @@
+/**
+ * Dashboard Page
+ * 
+ * Protected page displaying user's whiteboards.
+ * Allows creating, viewing, and deleting boards.
+ */
+
 import { useEffect, useState } from 'react';
-import { env } from '../lib/env';
+import { useNavigate } from '@tanstack/react-router';
+import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
 interface Board {
@@ -9,7 +17,8 @@ interface Board {
   updatedAt: string;
 }
 
-export function Dashboard({ onSelectBoard }: { onSelectBoard: (id: string) => void }) {
+export function Dashboard() {
+  const navigate = useNavigate();
   const { token, user, logout } = useAuth();
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,9 +27,7 @@ export function Dashboard({ onSelectBoard }: { onSelectBoard: (id: string) => vo
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${env.backendUrl}/api/boards`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    apiFetch('/api/boards', { token })
       .then((res) => res.json())
       .then((data) => {
         if (data.boards) {
@@ -34,17 +41,15 @@ export function Dashboard({ onSelectBoard }: { onSelectBoard: (id: string) => vo
   const createBoard = async () => {
     setCreating(true);
     try {
-      const res = await fetch(`${env.backendUrl}/api/boards`, {
+      const res = await apiFetch('/api/boards', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ title: 'Untitled Board' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Untitled Board' }),
+        token
       });
       const data = await res.json();
       if (data.board?.id) {
-        onSelectBoard(data.board.id);
+        navigate({ to: '/board/$boardId', params: { boardId: data.board.id } });
       }
     } catch (e) {
       console.error('Failed to create board', e);
@@ -97,7 +102,7 @@ export function Dashboard({ onSelectBoard }: { onSelectBoard: (id: string) => vo
                 className="group relative flex h-64 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md"
               >
                 <div 
-                  onClick={() => onSelectBoard(board.id)}
+                  onClick={() => navigate({ to: '/board/$boardId', params: { boardId: board.id } })}
                   className="flex-1 bg-gray-100 cursor-pointer overflow-hidden"
                 >
                   {board.thumbnailUrl ? (
@@ -123,9 +128,9 @@ export function Dashboard({ onSelectBoard }: { onSelectBoard: (id: string) => vo
                     onClick={(e) => {
                       e.stopPropagation();
                       if (confirm('Are you sure you want to delete this board?')) {
-                        fetch(`${env.backendUrl}/api/boards/${board.id}`, {
+                        apiFetch(`/api/boards/${board.id}`, {
                           method: 'DELETE',
-                          headers: { Authorization: `Bearer ${token}` }
+                          token
                         })
                           .then((res) => {
                             if (res.ok) {

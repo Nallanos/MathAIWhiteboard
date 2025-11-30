@@ -1,8 +1,17 @@
+/**
+ * Register Page
+ * 
+ * Public page for user registration.
+ * Redirects to dashboard on successful registration.
+ */
+
 import { useState } from 'react';
+import { useNavigate, Link } from '@tanstack/react-router';
 import { useAuth } from '../context/AuthContext';
 import { env } from '../lib/env';
 
-export function Register({ onLoginClick }: { onLoginClick: () => void }) {
+export function Register() {
+  const navigate = useNavigate();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +38,7 @@ export function Register({ onLoginClick }: { onLoginClick: () => void }) {
       }
 
       login(data.token, data.user);
+      navigate({ to: '/' });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -86,14 +96,14 @@ export function Register({ onLoginClick }: { onLoginClick: () => void }) {
               disabled={loading}
               className="group relative flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
             >
-              {loading ? 'Sign up' : 'Sign up'}
+              {loading ? 'Creating account...' : 'Sign up'}
             </button>
           </div>
           
           <div className="text-center">
-            <button type="button" onClick={onLoginClick} className="text-sm text-indigo-600 hover:text-indigo-500">
+            <Link to="/login" className="text-sm text-indigo-600 hover:text-indigo-500">
               Already have an account? Sign in
-            </button>
+            </Link>
           </div>
         </form>
       </div>
