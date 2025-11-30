@@ -25,6 +25,7 @@ import {
   createErrorHandler,
 } from './middleware/index.js';
 import { getDb } from './db/client.js';
+import { runMigrations } from './db/migrate.js';
 import { CaptureService } from './services/capture-service.js';
 import { AiService } from './services/ai-service.js';
 import { BoardService } from './services/board-service.js';
@@ -37,6 +38,9 @@ const __dirname = dirname(__filename);
 async function bootstrap() {
   const config = loadEnv();
   console.log('Allowed CORS Origins:', config.corsOrigin);
+  
+  // Run database migrations
+  await runMigrations(config.databaseUrl);
   
   const app = express();
   const db = getDb(config);

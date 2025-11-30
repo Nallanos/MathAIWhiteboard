@@ -21,4 +21,4 @@ cmds = [
 ]
 
 [start]
-cmd = "cd apps/backend && pnpm db:push && node dist/index.js"
+cmd = "node apps/backend/dist/index.js"
