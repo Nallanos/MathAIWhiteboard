@@ -5,6 +5,8 @@
  */
 
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
@@ -28,6 +30,9 @@ import { AiService } from './services/ai-service.js';
 import { BoardService } from './services/board-service.js';
 import { MessageService } from './services/message-service.js';
 import { AuthService } from './services/auth-service.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 async function bootstrap() {
   const config = loadEnv();
@@ -79,6 +84,18 @@ async function bootstrap() {
   registerBoardRoutes({ app, boardService, authMiddleware });
   registerMessageRoutes({ app, messageService, authMiddleware });
   registerStripeRoutes(app);
+
+  // Serve static frontend files in production
+  const publicPath = join(__dirname, '..', 'public');
+  app.use(express.static(publicPath));
+  
+  // SPA fallback - serve index.html for all non-API routes
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(join(publicPath, 'index.html'));
+  });
 
   // Error handler must be last
   app.use(errorHandler);

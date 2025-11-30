@@ -6,7 +6,7 @@ export interface EnvConfig {
   geminiKey: string;
   openaiKey?: string;
   anthropicKey?: string;
-  stripeSecretKey: string;
+  stripeSecretKey?: string;
   databaseUrl: string;
   captureStorageDir: string;
   captureImageMaxBytes: number;
@@ -27,7 +27,6 @@ export function loadEnv(): EnvConfig {
     CAPTURE_SCENE_MAX_BYTES = '1048576'
   } = process.env;
 
-  if (!STRIPE_SECRET_KEY) throw new Error('Missing STRIPE_SECRET_KEY');
   if (!GEMINI_API_KEY) {
     throw new Error('Set GEMINI_API_KEY to enable AI analysis');
   }

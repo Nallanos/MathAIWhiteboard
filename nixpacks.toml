@@ -1,5 +1,5 @@
-# Nixpacks configuration for Railway - Backend Service
-# Deploy from repo root with this config
+# Nixpacks configuration for Railway - Full Stack
+# Backend serves API + static frontend
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
@@ -14,7 +14,10 @@ cmds = [
 [phases.build]
 cmds = [
   "pnpm --filter @mathboard/shared build",
-  "pnpm --filter @mathboard/backend build"
+  "pnpm --filter @mathboard/web build",
+  "pnpm --filter @mathboard/backend build",
+  "mkdir -p apps/backend/public",
+  "cp -r apps/web/dist/* apps/backend/public/"
 ]
 
 [start]
