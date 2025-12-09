@@ -152,7 +152,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
       {/* Mobile floating toggle on the right side */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="md:hidden fixed right-3 top-1/2 -translate-y-1/2 bg-white shadow-lg rounded-full px-3 py-2 text-base hover:bg-gray-50 z-40"
+        className="md:hidden fixed right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white shadow-lg rounded-full px-3 py-2 text-base hover:bg-blue-700 active:bg-blue-800 z-40"
         aria-label="Toggle chat sidebar"
       >
         {sidebarOpen ? '✕' : '💬'}
