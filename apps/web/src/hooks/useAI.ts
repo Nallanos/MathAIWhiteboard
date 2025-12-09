@@ -52,6 +52,8 @@ export function useAI(
       .catch((err) => console.error('Failed to load history', err));
   }, [conversationId, options.token]);
 
+  const MIN_VERSION_DELTA_FOR_CAPTURE = 5; // avoid re-uploading on tiny tweaks
+
   const uploadCapture = useCallback(async () => {
     if (!excalidrawApi || !conversationId) return null;
     if (!options.token) {
@@ -61,10 +63,18 @@ export function useAI(
 
     // Optimization: If scene hasn't changed since last upload, reuse the capture ID
     const currentVersion = options.getSceneVersion();
+    const delta = currentVersion - lastUploadedVersionRef.current;
+    if (currentVersion === lastUploadedVersionRef.current && lastCaptureIdRef.current) {
+      // No change since last upload
+      return lastCaptureIdRef.current;
+    }
+
     if (
-      currentVersion === lastUploadedVersionRef.current &&
+      delta > 0 &&
+      delta < MIN_VERSION_DELTA_FOR_CAPTURE &&
       lastCaptureIdRef.current
     ) {
+      // Minor change: reuse last capture to avoid spamming uploads
       return lastCaptureIdRef.current;
     }
 
@@ -138,7 +148,8 @@ export function useAI(
         prompt,
         locale: options.locale,
         mode: options.autoCapture ? 'auto' : 'manual',
-        captureId
+        captureId,
+        boardVersion: options.getSceneVersion()
       };
 
       // Optimistic update

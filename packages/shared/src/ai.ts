@@ -35,6 +35,7 @@ export interface AIPromptPayload {
   locale: 'fr' | 'en';
   mode: AIMode;
   captureId: string | null;
+  boardVersion?: number;
   provider?: 'google' | 'openai' | 'anthropic';
   model?: string;
 }

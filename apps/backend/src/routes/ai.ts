@@ -10,6 +10,7 @@ const analyzeSchema = z.object({
   locale: z.enum(['fr', 'en']).default('fr'),
   mode: z.enum(['auto', 'manual']).default('auto'),
   captureId: z.string().uuid().nullable(),
+  boardVersion: z.number().int().nonnegative().optional(),
   provider: z.enum(['google', 'openai', 'anthropic']).optional(),
   model: z.string().optional()
 });

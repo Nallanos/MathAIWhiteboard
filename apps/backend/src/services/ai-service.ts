@@ -141,7 +141,7 @@ export class AiService {
     }
 
     // 2. Add current turn
-    const currentParts: Part[] = [{ text: this.buildSystemPrompt(payload.locale, capture) }];
+    const currentParts: Part[] = [{ text: this.buildSystemPrompt(payload.locale, capture, payload.boardVersion) }];
 
     if (capture) {
       const base64Image = await this.readImageAsBase64(capture.imageUrl);
@@ -179,7 +179,7 @@ export class AiService {
     if (!this.openai) throw new Error('OpenAI not configured');
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: 'system', content: this.buildSystemPrompt(payload.locale, capture) }
+      { role: 'system', content: this.buildSystemPrompt(payload.locale, capture, payload.boardVersion) }
     ];
 
     for (const msg of history) {
@@ -220,7 +220,7 @@ export class AiService {
   ) {
     if (!this.anthropic) throw new Error('Anthropic not configured');
 
-    const system = this.buildSystemPrompt(payload.locale, capture);
+    const system = this.buildSystemPrompt(payload.locale, capture, payload.boardVersion);
     const messages: Anthropic.Messages.MessageParam[] = [];
 
     for (const msg of history) {
@@ -275,13 +275,21 @@ export class AiService {
     return cleaned;
   }
 
-  private buildSystemPrompt(locale: 'fr' | 'en', capture: CaptureRecord | null): string {
+  private buildSystemPrompt(
+    locale: 'fr' | 'en',
+    capture: CaptureRecord | null,
+    boardVersion?: number
+  ): string {
     const language = locale === 'en' ? 'anglais clair' : 'français lycéen';
     const summary = capture
       ? `La scène mesure ${capture.width}×${capture.height}px et contient environ ${this.describeScene(
           capture.scene
         )}.`
       : 'Aucune capture disponible; appuie-toi uniquement sur la question textuelle.';
+
+    const versionLine = boardVersion !== undefined
+      ? `Version du tableau: ${boardVersion}. Si une image est jointe, elle correspond à cette version. Ignore toute information relative à des versions antérieures.`
+      : undefined;
 
     return [
       'Tu es « Le Prof Artificiel », un tuteur de mathématiques bienveillant et concis.',
@@ -293,8 +301,9 @@ export class AiService {
       '4. Ne fais pas le travail à la place de l\'élève.',
       '5. FORMATAGE MATHÉMATIQUE : Utilise EXCLUSIVEMENT LaTeX (avec $ ou $$). INTERDICTION ABSOLUE de répéter la formule en texte brut. Si tu écris une formule en LaTeX, NE L\'ÉCRIS PAS en texte à côté. Exemple : Écris « $x^2$ » et NON « $x^2$ x^2 ».',
       `Rédige en ${language}.`,
-      summary
-    ].join('\n');
+      summary,
+      versionLine
+    ].filter(Boolean).join('\n');
   }
 
   private describeScene(scene: unknown): string {
