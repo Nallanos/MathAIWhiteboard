@@ -31,8 +31,6 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   const [autoCapture] = useState(false);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [provider, setProvider] = useState<'google' | 'openai' | 'anthropic'>('google');
-  const [model, setModel] = useState<string>('gemini-2.0-flash');
   const sceneVersionRef = useRef(0);
   const getSceneVersion = useCallback(() => sceneVersionRef.current, []);
   
@@ -98,9 +96,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     autoCapture,
     locale: 'fr',
     token,
-    getSceneVersion,
-    provider,
-    model
+    getSceneVersion
   });
 
   const { peerCount } = useCollab(
@@ -177,12 +173,6 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
               onSend={sendPrompt}
               isBusy={isBusy}
               theme={theme}
-              provider={provider}
-              model={model}
-              onModelChange={(p, m) => {
-                setProvider(p);
-                setModel(m);
-              }}
               onNewChat={resetConversation}
               onClose={() => setSidebarOpen(false)}
             />

@@ -9,9 +9,6 @@ interface Props {
   onSend: (prompt: string) => Promise<void> | void;
   isBusy: boolean;
   theme: 'light' | 'dark';
-  provider: 'google' | 'openai' | 'anthropic';
-  model: string;
-  onModelChange: (provider: 'google' | 'openai' | 'anthropic', model: string) => void;
   onNewChat: () => void;
   onClose?: () => void;
 }
@@ -21,9 +18,6 @@ export function AISidebar({
   onSend,
   isBusy,
   theme,
-  provider,
-  model,
-  onModelChange,
   onNewChat,
   onClose
 }: Props) {
@@ -93,25 +87,6 @@ export function AISidebar({
             </svg>
           </button>
         </div>
-        <select 
-          value={`${provider}:${model}`}
-          onChange={(e) => {
-            const [p, m] = e.target.value.split(':');
-            onModelChange(p as any, m);
-          }}
-          className={`text-xs bg-transparent border rounded px-1 py-0.5 outline-none ${isDark ? 'text-slate-300 border-slate-700' : 'text-slate-600 border-slate-300'}`}
-        >
-           <optgroup label="Google">
-             <option value="google:gemini-2.0-flash">Gemini 2.0 Flash</option>
-           </optgroup>
-           <optgroup label="OpenAI">
-             <option value="openai:gpt-4o-mini">GPT-4o Mini</option>
-           </optgroup>
-           <optgroup label="Anthropic">
-             <option value="anthropic:claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
-             <option value="anthropic:claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
-           </optgroup>
-        </select>
       </div>
       <div className={feedClasses}>
         {!messages.length && !isBusy && (

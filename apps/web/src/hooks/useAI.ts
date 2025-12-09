@@ -11,8 +11,6 @@ interface UseAIOptions {
   locale: 'fr' | 'en';
   token: string | null;
   getSceneVersion: () => number;
-  provider?: 'google' | 'openai' | 'anthropic';
-  model?: string;
 }
 
 export function useAI(
@@ -140,9 +138,7 @@ export function useAI(
         prompt,
         locale: options.locale,
         mode: options.autoCapture ? 'auto' : 'manual',
-        captureId,
-        provider: options.provider,
-        model: options.model
+        captureId
       };
 
       // Optimistic update
