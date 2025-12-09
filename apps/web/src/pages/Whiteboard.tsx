@@ -36,7 +36,11 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   const sceneVersionRef = useRef(0);
   const getSceneVersion = useCallback(() => sceneVersionRef.current, []);
   
-  const [sidebarWidth, setSidebarWidth] = useState(400);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    // Responsive default: smaller on mobile
+    return window.innerWidth < 768 ? 0 : 400;
+  });
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const isResizingRef = useRef(false);
 
   const startResizing = useCallback(() => {
@@ -105,8 +109,8 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-[#f5f5f7] text-slate-900">
-      <main className="relative flex-1 min-w-0 min-h-0 bg-white">
+    <div className="flex h-screen max-h-screen overflow-hidden w-full bg-[#f5f5f7] text-slate-900">
+      <main className="relative flex-1 min-w-0 h-full overflow-hidden bg-white">
         <div className="absolute inset-0">
           <div className="h-full w-full">
             <Suspense fallback={<div className="flex h-full items-center justify-center">Loading editor...</div>}>
@@ -118,17 +122,28 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
           </div>
         </div>
         <CollaborationStatus boardId={boardId} peerCount={peerCount} />
-        <div className="absolute top-4 left-4 z-10">
+        <div className="absolute top-4 left-4 z-10 flex gap-2">
            <button onClick={handleBack} className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50">
-             ← Back to Dashboard
+             ← Back
+           </button>
+           <button 
+             onClick={() => setSidebarOpen(!sidebarOpen)} 
+             className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50 md:hidden"
+           >
+             {sidebarOpen ? '✕' : '💬'}
            </button>
         </div>
       </main>
-      <div
-        className="w-1 cursor-col-resize hover:bg-blue-500 bg-gray-200 transition-colors z-20"
-        onMouseDown={startResizing}
-      />
-      <div style={{ width: sidebarWidth }} className="min-w-[320px] flex-shrink-0">
+      {/* Sidebar toggle for desktop */}
+      {sidebarOpen && (
+        <>
+          <div
+            className="hidden md:block w-1 cursor-col-resize hover:bg-blue-500 bg-gray-200 transition-colors z-20"
+            onMouseDown={startResizing}
+          />
+          <div 
+            style={{ width: window.innerWidth < 768 ? '100%' : sidebarWidth }} 
+            className="absolute md:relative right-0 top-0 h-full md:min-w-[320px] flex-shrink-0 z-30 md:z-auto">
         <AISidebar
           messages={messages}
           onSend={sendPrompt}
@@ -138,8 +153,11 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
           model={model}
           onModelChange={(p, m) => { setProvider(p); setModel(m); }}
           onNewChat={resetConversation}
+          onClose={() => setSidebarOpen(false)}
         />
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

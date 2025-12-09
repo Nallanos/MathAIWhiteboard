@@ -13,6 +13,7 @@ interface Props {
   model: string;
   onModelChange: (provider: 'google' | 'openai' | 'anthropic', model: string) => void;
   onNewChat: () => void;
+  onClose?: () => void;
 }
 
 export function AISidebar({
@@ -23,7 +24,8 @@ export function AISidebar({
   provider,
   model,
   onModelChange,
-  onNewChat
+  onNewChat,
+  onClose
 }: Props) {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const copy = SIDEBAR_COPY;
@@ -67,6 +69,17 @@ export function AISidebar({
     <aside className={containerClasses}>
       <div className={headerClasses}>
         <div className="flex items-center gap-2">
+          {onClose && (
+            <button
+              onClick={onClose}
+              className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors md:hidden ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
+              title="Close"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          )}
           <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
             {copy.appName}
           </p>
