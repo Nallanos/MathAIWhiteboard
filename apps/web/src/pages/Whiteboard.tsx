@@ -36,11 +36,13 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   const sceneVersionRef = useRef(0);
   const getSceneVersion = useCallback(() => sceneVersionRef.current, []);
   
+  const BREAKPOINT = 1100; // px; below this we show a closable overlay sidebar
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    // Responsive default: smaller on mobile
-    return window.innerWidth < 768 ? 0 : 400;
+    // Responsive default: smaller on compact viewports
+    return window.innerWidth < BREAKPOINT ? 0 : 400;
   });
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= BREAKPOINT);
   const isResizingRef = useRef(false);
 
   const startResizing = useCallback(() => {
@@ -64,11 +66,28 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   );
 
   useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      setViewportWidth(width);
+
+      if (width < BREAKPOINT) {
+        // On small screens, close sidebar by default to maximize canvas
+        setSidebarOpen(false);
+      } else {
+        // On large screens, keep sidebar visible
+        setSidebarOpen(true);
+        setSidebarWidth((current) => (current === 0 ? 400 : current));
+      }
+    };
+
     window.addEventListener("mousemove", resize);
     window.addEventListener("mouseup", stopResizing);
+    window.addEventListener("resize", handleResize);
+    handleResize();
     return () => {
       window.removeEventListener("mousemove", resize);
       window.removeEventListener("mouseup", stopResizing);
+      window.removeEventListener("resize", handleResize);
     };
   }, [resize, stopResizing]);
   
@@ -108,6 +127,8 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     navigate({ to: '/' });
   };
 
+  const isCompact = viewportWidth < BREAKPOINT;
+
   return (
     <div className="flex h-screen max-h-screen overflow-hidden w-full bg-[#f5f5f7] text-slate-900">
       <main className="relative flex-1 min-w-0 h-full overflow-hidden bg-white">
@@ -126,35 +147,45 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
            <button onClick={handleBack} className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50">
              ← Back
            </button>
-           <button 
-             onClick={() => setSidebarOpen(!sidebarOpen)} 
-             className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50 md:hidden"
-           >
-             {sidebarOpen ? '✕' : '💬'}
-           </button>
         </div>
       </main>
+      {/* Mobile floating toggle on the right side */}
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="md:hidden fixed right-3 top-1/2 -translate-y-1/2 bg-white shadow-lg rounded-full px-3 py-2 text-base hover:bg-gray-50 z-40"
+        aria-label="Toggle chat sidebar"
+      >
+        {sidebarOpen ? '✕' : '💬'}
+      </button>
       {/* Sidebar toggle for desktop */}
       {sidebarOpen && (
         <>
+          {!isCompact && (
+            <div
+              className="hidden md:block w-1 cursor-col-resize hover:bg-blue-500 bg-gray-200 transition-colors z-20"
+              onMouseDown={startResizing}
+            />
+          )}
           <div
-            className="hidden md:block w-1 cursor-col-resize hover:bg-blue-500 bg-gray-200 transition-colors z-20"
-            onMouseDown={startResizing}
-          />
-          <div 
-            style={{ width: window.innerWidth < 768 ? '100%' : sidebarWidth }} 
-            className="absolute md:relative right-0 top-0 h-full md:min-w-[320px] flex-shrink-0 z-30 md:z-auto">
-        <AISidebar
-          messages={messages}
-          onSend={sendPrompt}
-          isBusy={isBusy}
-          theme={theme}
-          provider={provider}
-          model={model}
-          onModelChange={(p, m) => { setProvider(p); setModel(m); }}
-          onNewChat={resetConversation}
-          onClose={() => setSidebarOpen(false)}
-        />
+            style={{ width: isCompact ? '100%' : sidebarWidth }}
+            className={`right-0 top-0 h-full flex-shrink-0 z-30 md:z-auto ${
+              isCompact ? 'absolute md:relative md:min-w-[320px] bg-white shadow-2xl' : 'md:relative md:min-w-[320px]'
+            }`}
+          >
+            <AISidebar
+              messages={messages}
+              onSend={sendPrompt}
+              isBusy={isBusy}
+              theme={theme}
+              provider={provider}
+              model={model}
+              onModelChange={(p, m) => {
+                setProvider(p);
+                setModel(m);
+              }}
+              onNewChat={resetConversation}
+              onClose={() => setSidebarOpen(false)}
+            />
           </div>
         </>
       )}
