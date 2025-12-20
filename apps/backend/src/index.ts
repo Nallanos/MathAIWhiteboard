@@ -131,8 +131,8 @@ async function bootstrap() {
 
   // Start server
   const port = config.port;
-  server.listen(port, () => {
-    console.log(`Backend listening on http://localhost:${port}`);
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`Backend listening on 0.0.0.0:${port}`);
   });
   console.log('Capture Limits:', {
     image: config.captureImageMaxBytes,

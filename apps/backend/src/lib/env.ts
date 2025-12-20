@@ -16,7 +16,7 @@ export interface EnvConfig {
 
 export function loadEnv(): EnvConfig {
   const {
-    PORT = '4000',
+    PORT,
     CORS_ORIGIN = 'http://localhost:5173',
     GEMINI_API_KEY = '',
     OPENAI_API_KEY,
@@ -29,6 +29,24 @@ export function loadEnv(): EnvConfig {
     CAPTURE_SCENE_MAX_BYTES = '1048576'
   } = process.env;
 
+  const resolvePort = () => {
+    const candidates = [
+      PORT,
+      process.env.RAILWAY_PORT,
+      process.env.RAILWAY_TCP_PROXY_PORT,
+      process.env.NIXPACKS_PORT,
+      process.env.APP_PORT,
+    ].filter(Boolean) as string[];
+
+    for (const raw of candidates) {
+      const n = Number.parseInt(String(raw), 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 4000;
+  };
+
+  const port = resolvePort();
+
   if (!GEMINI_API_KEY) {
     console.warn('[env] GEMINI_API_KEY is not set: AI routes will be disabled');
   }
@@ -38,7 +56,7 @@ export function loadEnv(): EnvConfig {
   }
 
   return {
-    port: parseInt(PORT, 10),
+    port,
     corsOrigin: CORS_ORIGIN.includes(',') ? CORS_ORIGIN.split(',') : CORS_ORIGIN,
     geminiKey: GEMINI_API_KEY,
     openaiKey: OPENAI_API_KEY,
