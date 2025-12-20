@@ -74,6 +74,12 @@ async function bootstrap() {
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      // Google Identity Services opens a popup and uses cross-origin messaging.
+      // Helmet's default COOP (same-origin) can break the flow and leave users stuck on
+      // https://accounts.google.com/gsi/transform after selecting an account.
+      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+      // Avoid forcing COEP, which can block third-party embeds needed by auth providers.
+      crossOriginEmbedderPolicy: false,
       // Helmet's default CSP is very restrictive for a SPA and blocks Google Identity Services
       // script injection (https://accounts.google.com/gsi/client), making the OAuth button invisible.
       contentSecurityPolicy: false,
