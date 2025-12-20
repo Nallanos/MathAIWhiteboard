@@ -48,6 +48,20 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
     }
   };
 
+  const classifyGoogleVerifyError = (message: string): string => {
+    if (/aud|audience|Wrong recipient|recipient/i.test(message)) return 'audience_mismatch';
+    if (/expired|expir/i.test(message)) return 'token_expired';
+    if (/used too early|not active|nbf|iat/i.test(message)) return 'token_not_yet_valid';
+    if (
+      /cert|certificate|public keys|jwks|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|fetch/i.test(
+        message
+      )
+    ) {
+      return 'cert_fetch_failed';
+    }
+    return 'unknown';
+  };
+
   app.post('/api/auth/register', async (req: Request, res: Response) => {
     const payload = registerSchema.safeParse(req.body);
     if (!payload.success) {
@@ -145,6 +159,10 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
         decoded && typeof decoded === 'object' ? (decoded as any).aud : undefined;
       const decodedIss =
         decoded && typeof decoded === 'object' ? (decoded as any).iss : undefined;
+      const decodedIat =
+        decoded && typeof decoded === 'object' ? (decoded as any).iat : undefined;
+      const decodedExp =
+        decoded && typeof decoded === 'object' ? (decoded as any).exp : undefined;
 
       console.error('Google login failed', {
         message: error?.message,
@@ -154,15 +172,18 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
       });
 
       const message = typeof error?.message === 'string' ? error.message : '';
-      const hint = /aud|audience|Wrong recipient|recipient/i.test(message)
-        ? ' (client id mismatch)'
-        : '';
+      const reason = classifyGoogleVerifyError(message);
+      const hint = reason === 'audience_mismatch' ? ' (client id mismatch)' : '';
 
       res.status(401).json({
         error: `Invalid Google token${hint}`,
         details: {
+          reason,
           tokenAud: decodedAud,
           tokenIss: decodedIss,
+          tokenIat: decodedIat,
+          tokenExp: decodedExp,
+          serverTime: new Date().toISOString(),
           expectedAudiences: allowedAudiences,
         },
       });
