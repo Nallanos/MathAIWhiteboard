@@ -5,6 +5,7 @@
  */
 
 import { createServer } from 'node:http';
+import dns from 'node:dns';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import express from 'express';
@@ -36,6 +37,15 @@ import { shutdownPostHog } from './lib/posthog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Some hosting environments have flaky IPv6 egress; Google token verification fetches
+// public certs from googleapis and can fail in prod while working in local dev.
+// Prefer IPv4 to make outbound HTTPS more reliable.
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // ignore
+}
 
 async function bootstrap() {
   const config = loadEnv();
