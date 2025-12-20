@@ -26,7 +26,27 @@ interface Dependencies {
 }
 
 export function registerAuthRoutes({ app, authService, googleClientId }: Dependencies): void {
-  const oauthClient = new OAuth2Client(googleClientId);
+  const allowedAudiences = String(googleClientId || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const oauthClient = new OAuth2Client(allowedAudiences[0]);
+
+  const tryDecodeJwtPayload = (token: string): Record<string, unknown> | null => {
+    try {
+      const parts = token.split('.');
+      if (parts.length < 2) return null;
+      const payload = parts[1]
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+      const json = Buffer.from(padded, 'base64').toString('utf8');
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  };
 
   app.post('/api/auth/register', async (req: Request, res: Response) => {
     const payload = registerSchema.safeParse(req.body);
@@ -88,10 +108,16 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
       return res.status(400).json({ errors: payload.error.flatten() });
     }
 
+    if (allowedAudiences.length === 0) {
+      return res.status(503).json({
+        error: 'Google OAuth is not configured (missing GOOGLE_CLIENT_ID)',
+      });
+    }
+
     try {
       const ticket = await oauthClient.verifyIdToken({
         idToken: payload.data.credential,
-        audience: googleClientId
+        audience: allowedAudiences,
       });
 
       const tokenPayload = ticket.getPayload();
@@ -114,8 +140,20 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
 
       res.json(result);
     } catch (error: any) {
-      console.error('Google login failed', error);
-      res.status(401).json({ error: 'Invalid Google token' });
+      const decoded = tryDecodeJwtPayload(payload.data.credential);
+      console.error('Google login failed', {
+        message: error?.message,
+        name: error?.name,
+        aud: decoded && typeof decoded === 'object' ? (decoded as any).aud : undefined,
+        iss: decoded && typeof decoded === 'object' ? (decoded as any).iss : undefined,
+      });
+
+      const message = typeof error?.message === 'string' ? error.message : '';
+      const hint = /aud|audience|Wrong recipient|recipient/i.test(message)
+        ? ' (client id mismatch)'
+        : '';
+
+      res.status(401).json({ error: `Invalid Google token${hint}` });
     }
   });
 }

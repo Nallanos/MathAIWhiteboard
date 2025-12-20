@@ -23,6 +23,7 @@ export function loadEnv(): EnvConfig {
     ANTHROPIC_API_KEY,
     STRIPE_SECRET_KEY,
     GOOGLE_CLIENT_ID = '',
+    VITE_GOOGLE_CLIENT_ID = '',
     DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/whiteboardai',
     CAPTURE_STORAGE_DIR = './data/captures',
     CAPTURE_IMAGE_MAX_BYTES = '5242880',
@@ -51,8 +52,12 @@ export function loadEnv(): EnvConfig {
     console.warn('[env] GEMINI_API_KEY is not set: AI routes will be disabled');
   }
 
-  if (!GOOGLE_CLIENT_ID) {
-    console.warn('[env] GOOGLE_CLIENT_ID is not set: Google OAuth will be unavailable');
+  const resolvedGoogleClientId = (GOOGLE_CLIENT_ID || VITE_GOOGLE_CLIENT_ID || '').trim();
+
+  if (!resolvedGoogleClientId) {
+    console.warn(
+      '[env] GOOGLE_CLIENT_ID is not set: Google OAuth will be unavailable (you can also set VITE_GOOGLE_CLIENT_ID for compatibility)'
+    );
   }
 
   return {
@@ -62,7 +67,7 @@ export function loadEnv(): EnvConfig {
     openaiKey: OPENAI_API_KEY,
     anthropicKey: ANTHROPIC_API_KEY,
     stripeSecretKey: STRIPE_SECRET_KEY,
-    googleClientId: GOOGLE_CLIENT_ID,
+    googleClientId: resolvedGoogleClientId,
     databaseUrl: DATABASE_URL,
     captureStorageDir: CAPTURE_STORAGE_DIR,
     captureImageMaxBytes: parseInt(CAPTURE_IMAGE_MAX_BYTES, 10),
