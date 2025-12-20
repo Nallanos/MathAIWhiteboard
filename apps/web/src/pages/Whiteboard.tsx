@@ -307,7 +307,6 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
               messages={messages}
               onSend={async (prompt) => {
                 await sendPrompt(prompt, chatMode, { model });
-                await refreshMe();
               }}
               isBusy={isBusy}
               theme={theme}
