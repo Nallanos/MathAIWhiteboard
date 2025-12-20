@@ -18,11 +18,11 @@ export function loadEnv(): EnvConfig {
   const {
     PORT = '4000',
     CORS_ORIGIN = 'http://localhost:5173',
-    GEMINI_API_KEY,
+    GEMINI_API_KEY = '',
     OPENAI_API_KEY,
     ANTHROPIC_API_KEY,
     STRIPE_SECRET_KEY,
-    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_ID = '',
     DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/whiteboardai',
     CAPTURE_STORAGE_DIR = './data/captures',
     CAPTURE_IMAGE_MAX_BYTES = '5242880',
@@ -30,11 +30,11 @@ export function loadEnv(): EnvConfig {
   } = process.env;
 
   if (!GEMINI_API_KEY) {
-    throw new Error('Set GEMINI_API_KEY to enable AI analysis');
+    console.warn('[env] GEMINI_API_KEY is not set: AI routes will be disabled');
   }
 
   if (!GOOGLE_CLIENT_ID) {
-    throw new Error('Set GOOGLE_CLIENT_ID to enable Google OAuth');
+    console.warn('[env] GOOGLE_CLIENT_ID is not set: Google OAuth will be unavailable');
   }
 
   return {

@@ -50,12 +50,15 @@ async function bootstrap() {
     baseDir: config.captureStorageDir
   });
 
-  const aiService = new AiService({
-    db,
-    geminiKey: config.geminiKey,
-    openaiKey: config.openaiKey,
-    anthropicKey: config.anthropicKey
-  });
+  const aiEnabled = Boolean(config.geminiKey);
+  const aiService = aiEnabled
+    ? new AiService({
+        db,
+        geminiKey: config.geminiKey,
+        openaiKey: config.openaiKey,
+        anthropicKey: config.anthropicKey,
+      })
+    : null;
 
   const boardService = new BoardService({ db });
   const messageService = new MessageService({ db });
@@ -84,7 +87,21 @@ async function bootstrap() {
   registerAuthRoutes({ app, authService, googleClientId: config.googleClientId });
   registerMeRoutes({ app, authMiddleware, db });
   registerCaptureRoutes({ app, service: captureService, config, authMiddleware });
-  registerAIRoutes({ app, authMiddleware, aiService });
+  if (aiService) {
+    registerAIRoutes({ app, authMiddleware, aiService });
+  } else {
+    app.get('/api/ai/models', authMiddleware, async (_req: express.Request, res: express.Response) => {
+      return res.status(200).json({
+        freeModel: 'gemini-2.0-flash',
+        premiumModel: 'gemini-3-flash-preview',
+        premiumAvailable: false,
+      });
+    });
+
+    app.post('/api/ai/analyze', authMiddleware, async (_req: express.Request, res: express.Response) => {
+      return res.status(503).json({ error: 'AI is disabled (missing GEMINI_API_KEY)' });
+    });
+  }
   registerBoardRoutes({ app, boardService, authMiddleware });
   registerMessageRoutes({ app, messageService, authMiddleware });
   registerTutorRoutes({ app, authMiddleware, db });

@@ -4,6 +4,7 @@ import type { BoardSnapshot } from '@mathboard/shared';
 interface CursorPayload {
   boardId: string;
   userId: string;
+  userName?: string;
   position: { x: number; y: number };
 }
 
@@ -29,6 +30,7 @@ export function setupCollaboration(io: Server): void {
     socket.on('cursor-move', (payload: CursorPayload) => {
       socket.to(payload.boardId).emit('cursor-move', {
         userId: payload.userId,
+        userName: payload.userName,
         position: payload.position
       });
     });

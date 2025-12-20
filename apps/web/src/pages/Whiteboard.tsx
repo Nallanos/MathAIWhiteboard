@@ -8,6 +8,7 @@
 import { useCallback, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import '@excalidraw/excalidraw/index.css';
+import { sceneCoordsToViewportCoords } from '@excalidraw/excalidraw';
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/dist/types/excalidraw/types';
 import { AISidebar } from '../components/AISidebar';
 import type { ChatMode } from '@mathboard/shared';
@@ -211,7 +212,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     [tutor, patchTutorState]
   );
 
-  const { peerCount, broadcastSnapshot, shouldBroadcast } = useCollab(
+  const { peerCount, broadcastSnapshot, shouldBroadcast, remoteCursors, broadcastCursor } = useCollab(
     {
       boardId,
       userId: user?.id || 'anon',
@@ -220,8 +221,18 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     api
   );
 
+  const cursorRafRef = useRef<number | null>(null);
+  const lastCursorSentAtRef = useRef(0);
+
   const broadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSnapshotRef = useRef<BoardSnapshot | null>(null);
+  const lastBroadcastDigestRef = useRef<string | null>(null);
+
+  const computeSceneDigest = useCallback((elements: readonly any[], files: any) => {
+    const sumVersions = elements.reduce((acc, el) => acc + (typeof el?.version === 'number' ? el.version : 0), 0);
+    const filesCount = files && typeof files === 'object' ? Object.keys(files).length : 0;
+    return `${elements.length}:${sumVersions}:${filesCount}`;
+  }, []);
 
   const handleAppStateChange = useCallback(
     (elements: readonly any[], appState: AppState, files: any) => {
@@ -232,12 +243,35 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
       saveBoard(elements, appState, files);
 
       if (!shouldBroadcast()) return;
+
+      // Avoid broadcasting when only the local camera/tool state changes (pan/zoom, selections, etc.).
+      // This prevents middle-click panning from moving everyone else's viewport.
+      const digest = computeSceneDigest(elements, files);
+      if (lastBroadcastDigestRef.current === digest) {
+        return;
+      }
+      lastBroadcastDigestRef.current = digest;
+
       // Remove transient appState bits to reduce noise.
-      const { collaborators, ...cleanAppState } = appState as any;
+      const { collaborators, ...rest } = appState as any;
+      // Never sync camera-related state across users.
+      const {
+        scrollX,
+        scrollY,
+        zoom,
+        offsetLeft,
+        offsetTop,
+        width,
+        height,
+        ...cleanAppState
+      } = rest;
       pendingSnapshotRef.current = {
         id: boardId,
         elements: elements as any,
-        appState: cleanAppState,
+        // Keep appState minimal to avoid syncing per-user UI/tooling.
+        appState: {
+          viewBackgroundColor: cleanAppState?.viewBackgroundColor,
+        },
         files,
         capturedAt: new Date().toISOString(),
       };
@@ -251,7 +285,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
         pendingSnapshotRef.current = null;
       }, 120);
     },
-    [saveBoard, broadcastSnapshot, shouldBroadcast]
+    [saveBoard, broadcastSnapshot, shouldBroadcast, boardId, computeSceneDigest]
   );
 
   const handleBack = () => {
@@ -268,11 +302,98 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
             <Suspense fallback={<div className="flex h-full items-center justify-center">Loading editor...</div>}>
               <Excalidraw
                 onChange={handleAppStateChange}
+                onPointerUpdate={(payload: any) => {
+                  const pointer = payload?.pointer;
+                  if (!pointer) return;
+                  const x = Number(pointer.x);
+                  const y = Number(pointer.y);
+                  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                  const now = performance.now();
+                  // Throttle to keep it light.
+                  if (now - lastCursorSentAtRef.current < 40) return;
+
+                  // Send at most one per animation frame.
+                  if (cursorRafRef.current) return;
+                  cursorRafRef.current = window.requestAnimationFrame(() => {
+                    cursorRafRef.current = null;
+                    lastCursorSentAtRef.current = performance.now();
+                    broadcastCursor({ x, y });
+                  });
+                }}
                 excalidrawAPI={(instance) => setApi(instance)}
               />
             </Suspense>
           </div>
         </div>
+
+        {api && (
+          <div className="pointer-events-none fixed inset-0 z-30">
+            {Object.values(remoteCursors)
+              .filter((c) => c.userId !== (user?.id || 'anon'))
+              .map((c) => {
+                const appState = api.getAppState() as any;
+                const vp = sceneCoordsToViewportCoords(
+                  { sceneX: c.position.x, sceneY: c.position.y },
+                  appState
+                );
+
+                const offsetLeft = Number(appState?.offsetLeft ?? 0);
+                const offsetTop = Number(appState?.offsetTop ?? 0);
+                const scrollX = Number(appState?.scrollX ?? 0);
+                const scrollY = Number(appState?.scrollY ?? 0);
+                const zoom = Number(appState?.zoom?.value ?? 1);
+
+                // Excalidraw helpers have historically differed on whether the returned
+                // viewport coords include appState.offsetLeft/Top.
+                // We detect which one we got by comparing against the expected mapping.
+                const approxWithoutOffsetX = (c.position.x + scrollX) * zoom;
+                const approxWithoutOffsetY = (c.position.y + scrollY) * zoom;
+                const approxWithOffsetX = approxWithoutOffsetX + offsetLeft;
+                const approxWithOffsetY = approxWithoutOffsetY + offsetTop;
+
+                const vpX = Number(vp.x);
+                const vpY = Number(vp.y);
+                if (!Number.isFinite(vpX) || !Number.isFinite(vpY)) return null;
+
+                // If vp already matches the "with offset" form, use it as-is.
+                // If it matches the "without offset" form, add offset.
+                const x =
+                  Math.abs(vpX - approxWithOffsetX) < 2
+                    ? vpX
+                    : Math.abs(vpX - approxWithoutOffsetX) < 2
+                      ? vpX + offsetLeft
+                      : vpX;
+                const y =
+                  Math.abs(vpY - approxWithOffsetY) < 2
+                    ? vpY
+                    : Math.abs(vpY - approxWithoutOffsetY) < 2
+                      ? vpY + offsetTop
+                      : vpY;
+
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+                return (
+                  <div
+                    key={c.userId}
+                    className="absolute"
+                    style={{
+                      left: `${x}px`,
+                      top: `${y}px`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-blue-600" />
+                      <div className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-white">
+                        {c.userName || c.userId}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
         <CollaborationStatus boardId={boardId} peerCount={peerCount} />
         <div className="absolute top-16 left-4 z-10 flex gap-2">
            <button onClick={handleBack} className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50">
