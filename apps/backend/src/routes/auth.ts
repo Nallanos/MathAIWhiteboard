@@ -141,11 +141,16 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
       res.json(result);
     } catch (error: any) {
       const decoded = tryDecodeJwtPayload(payload.data.credential);
+      const decodedAud =
+        decoded && typeof decoded === 'object' ? (decoded as any).aud : undefined;
+      const decodedIss =
+        decoded && typeof decoded === 'object' ? (decoded as any).iss : undefined;
+
       console.error('Google login failed', {
         message: error?.message,
         name: error?.name,
-        aud: decoded && typeof decoded === 'object' ? (decoded as any).aud : undefined,
-        iss: decoded && typeof decoded === 'object' ? (decoded as any).iss : undefined,
+        aud: decodedAud,
+        iss: decodedIss,
       });
 
       const message = typeof error?.message === 'string' ? error.message : '';
@@ -153,7 +158,14 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
         ? ' (client id mismatch)'
         : '';
 
-      res.status(401).json({ error: `Invalid Google token${hint}` });
+      res.status(401).json({
+        error: `Invalid Google token${hint}`,
+        details: {
+          tokenAud: decodedAud,
+          tokenIss: decodedIss,
+          expectedAudiences: allowedAudiences,
+        },
+      });
     }
   });
 }
