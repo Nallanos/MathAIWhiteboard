@@ -132,7 +132,7 @@ export function Register() {
       <div className="w-full max-w-md space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
-            Create your account
+            Créer un compte
           </h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -142,7 +142,7 @@ export function Register() {
                 type="text"
                 required
                 className="relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3"
-                placeholder="Display Name"
+                placeholder="Nom d’affichage"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
@@ -152,7 +152,7 @@ export function Register() {
                 type="email"
                 required
                 className="relative block w-full border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3"
-                placeholder="Email address"
+                placeholder="Adresse e-mail"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -162,7 +162,7 @@ export function Register() {
                 type="password"
                 required
                 className="relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3"
-                placeholder="Password"
+                placeholder="Mot de passe"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -177,13 +177,13 @@ export function Register() {
               disabled={loading}
               className="group relative flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
             >
-              {loading ? 'Creating account...' : 'Sign up'}
+              {loading ? 'Création du compte…' : 'Créer un compte'}
             </button>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs uppercase tracking-wide text-gray-400">or</span>
+            <span className="text-xs uppercase tracking-wide text-gray-400">ou</span>
             <div className="h-px flex-1 bg-gray-200" />
           </div>
 
@@ -192,14 +192,14 @@ export function Register() {
               <div ref={googleButtonRef} className="flex justify-center" aria-busy={googleLoading} />
             ) : (
               <div className="rounded-md bg-gray-100 px-3 py-2 text-center text-sm text-gray-500">
-                Google Sign-In not configured
+                Connexion Google non configurée
               </div>
             )}
           </div>
           
           <div className="text-center">
             <Link to="/login" className="text-sm text-indigo-600 hover:text-indigo-500">
-              Already have an account? Sign in
+              Déjà un compte ? Se connecter
             </Link>
           </div>
         </form>

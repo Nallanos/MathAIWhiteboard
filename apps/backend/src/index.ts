@@ -71,9 +71,14 @@ async function bootstrap() {
   const errorHandler = createErrorHandler();
 
   // Apply global middleware
-  app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }
-  }));
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      // Helmet's default CSP is very restrictive for a SPA and blocks Google Identity Services
+      // script injection (https://accounts.google.com/gsi/client), making the OAuth button invisible.
+      contentSecurityPolicy: false,
+    })
+  );
   app.use(corsMiddleware);
   app.use(requestLogger);
   app.use(express.json({ limit: '10mb' }));

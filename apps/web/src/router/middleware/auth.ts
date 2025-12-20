@@ -2,7 +2,7 @@
  * Auth Middleware
  * 
  * Middleware to protect routes that require authentication.
- * Redirects to login page if user is not authenticated.
+ * Redirects to signup page if user is not authenticated.
  */
 
 import { redirect } from '@tanstack/react-router';
@@ -18,10 +18,10 @@ export function isAuthenticated(): boolean {
 
 /**
  * Require authentication to access a route.
- * Throws a redirect to /login if not authenticated.
+ * Throws a redirect to /signup if not authenticated.
  */
 export function requireAuth(): void {
   if (!isAuthenticated()) {
-    throw redirect({ to: '/login' });
+    throw redirect({ to: '/signup' });
   }
 }
