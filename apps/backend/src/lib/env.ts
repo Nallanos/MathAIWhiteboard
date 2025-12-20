@@ -42,7 +42,7 @@ export function loadEnv(): EnvConfig {
       const n = Number.parseInt(String(raw), 10);
       if (Number.isFinite(n) && n > 0) return n;
     }
-    return 4000;
+    return 8080;
   };
 
   const port = resolvePort();

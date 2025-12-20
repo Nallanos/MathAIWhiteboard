@@ -131,9 +131,21 @@ async function bootstrap() {
 
   // Start server
   const port = config.port;
-  server.listen(port, '0.0.0.0', () => {
-    console.log(`Backend listening on 0.0.0.0:${port}`);
+  await new Promise<void>((resolve, reject) => {
+    const onError = (e: unknown) => {
+      server.off('listening', onListening);
+      reject(e);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve();
+    };
+
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, '0.0.0.0');
   });
+  console.log(`Backend listening on 0.0.0.0:${port}`);
   console.log('Capture Limits:', {
     image: config.captureImageMaxBytes,
     scene: config.captureSceneMaxBytes
