@@ -142,7 +142,44 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   console.error('Failed to start backend', error);
-  process.exit(1);
+
+  // If we crash during boot on Railway, the edge will report 502/connection refused.
+  // Start a tiny fallback server so we can still see the failure reason via HTTP.
+  try {
+    const candidates = [
+      process.env.PORT,
+      process.env.RAILWAY_PORT,
+      process.env.RAILWAY_TCP_PROXY_PORT,
+      process.env.NIXPACKS_PORT,
+      process.env.APP_PORT,
+    ].filter(Boolean) as string[];
+
+    let port = 4000;
+    for (const raw of candidates) {
+      const n = Number.parseInt(String(raw), 10);
+      if (Number.isFinite(n) && n > 0) {
+        port = n;
+        break;
+      }
+    }
+
+    const app = express();
+    app.get('/api/health', (_req, res) => {
+      res.status(500).json({
+        status: 'boot_failed',
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
+    const server = createServer(app);
+    server.listen(port, '0.0.0.0', () => {
+      console.error(`Fallback health server listening on 0.0.0.0:${port}`);
+    });
+  } catch (fallbackError) {
+    console.error('Fallback server failed', fallbackError);
+    process.exit(1);
+  }
 });
 
 process.on('SIGTERM', async () => {
