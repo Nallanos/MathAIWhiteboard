@@ -85,6 +85,10 @@ Database (Supabase/Postgres)
 - Database: Supabase (Postgres)
 - File storage: Supabase Storage (for canvas exports)
 
+## 📈 Analytics (PostHog)
+
+Voir `docs/posthog.md`.
+
 **APIs:**
 - Anthropic Claude API (vision + text)
 - Stripe (payments)

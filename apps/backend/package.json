@@ -25,10 +25,12 @@
     "drizzle-kit": "^0.27.0",
     "drizzle-orm": "^0.36.0",
     "express": "^4.19.2",
+    "google-auth-library": "^10.5.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "openai": "^6.9.1",
     "pg": "^8.11.5",
+    "posthog-node": "^5.17.4",
     "socket.io": "^4.7.5",
     "zod": "^3.23.8"
   },

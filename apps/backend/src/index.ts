@@ -16,6 +16,8 @@ import { registerMessageRoutes } from './routes/messages.js';
 import { registerStripeRoutes } from './routes/stripe.js';
 import { registerCaptureRoutes } from './routes/captures.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerTutorRoutes } from './routes/tutor.js';
+import { registerMeRoutes } from './routes/me.js';
 import { setupCollaboration } from './socket/collaboration.js';
 import { loadEnv } from './lib/env.js';
 import {
@@ -25,12 +27,12 @@ import {
   createErrorHandler,
 } from './middleware/index.js';
 import { getDb } from './db/client.js';
-import { runMigrations } from './db/migrate.js';
 import { CaptureService } from './services/capture-service.js';
 import { AiService } from './services/ai-service.js';
 import { BoardService } from './services/board-service.js';
 import { MessageService } from './services/message-service.js';
 import { AuthService } from './services/auth-service.js';
+import { shutdownPostHog } from './lib/posthog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,9 +40,6 @@ const __dirname = dirname(__filename);
 async function bootstrap() {
   const config = loadEnv();
   console.log('Allowed CORS Origins:', config.corsOrigin);
-  
-  // Run database migrations
-  await runMigrations(config.databaseUrl);
   
   const app = express();
   const db = getDb(config);
@@ -82,11 +81,13 @@ async function bootstrap() {
   });
 
   // Register routes
-  registerAuthRoutes({ app, authService });
+  registerAuthRoutes({ app, authService, googleClientId: config.googleClientId });
+  registerMeRoutes({ app, authMiddleware, db });
   registerCaptureRoutes({ app, service: captureService, config, authMiddleware });
   registerAIRoutes({ app, authMiddleware, aiService });
   registerBoardRoutes({ app, boardService, authMiddleware });
   registerMessageRoutes({ app, messageService, authMiddleware });
+  registerTutorRoutes({ app, authMiddleware, db });
   registerStripeRoutes(app);
 
   // Serve static frontend files in production
@@ -125,4 +126,14 @@ async function bootstrap() {
 bootstrap().catch((error) => {
   console.error('Failed to start backend', error);
   process.exit(1);
+});
+
+process.on('SIGTERM', async () => {
+  await shutdownPostHog();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  await shutdownPostHog();
+  process.exit(0);
 });

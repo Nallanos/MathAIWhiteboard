@@ -8,17 +8,21 @@ import { createRouter } from '@tanstack/react-router';
 import {
   rootRoute,
   loginRoute,
-  registerRoute,
+  signupRoute,
+  registerRedirectRoute,
+  landingRoute,
   dashboardRoute,
   whiteboardRoute,
 } from './routes';
 
 // Build the route tree
 const routeTree = rootRoute.addChildren([
+  landingRoute,
   dashboardRoute,
   whiteboardRoute,
   loginRoute,
-  registerRoute,
+  signupRoute,
+  registerRedirectRoute,
 ]);
 
 // Create the router instance

@@ -13,7 +13,7 @@ import { requireAuth } from '../middleware/auth';
 
 export const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/',
+  path: '/app',
   beforeLoad: () => {
     requireAuth();
   },
@@ -22,7 +22,7 @@ export const dashboardRoute = createRoute({
 
 export const whiteboardRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/board/$boardId',
+  path: '/app/board/$boardId',
   beforeLoad: () => {
     requireAuth();
   },

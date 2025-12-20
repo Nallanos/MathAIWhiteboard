@@ -7,6 +7,7 @@ export interface EnvConfig {
   openaiKey?: string;
   anthropicKey?: string;
   stripeSecretKey?: string;
+  googleClientId: string;
   databaseUrl: string;
   captureStorageDir: string;
   captureImageMaxBytes: number;
@@ -21,6 +22,7 @@ export function loadEnv(): EnvConfig {
     OPENAI_API_KEY,
     ANTHROPIC_API_KEY,
     STRIPE_SECRET_KEY,
+    GOOGLE_CLIENT_ID,
     DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/whiteboardai',
     CAPTURE_STORAGE_DIR = './data/captures',
     CAPTURE_IMAGE_MAX_BYTES = '5242880',
@@ -31,6 +33,10 @@ export function loadEnv(): EnvConfig {
     throw new Error('Set GEMINI_API_KEY to enable AI analysis');
   }
 
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error('Set GOOGLE_CLIENT_ID to enable Google OAuth');
+  }
+
   return {
     port: parseInt(PORT, 10),
     corsOrigin: CORS_ORIGIN.includes(',') ? CORS_ORIGIN.split(',') : CORS_ORIGIN,
@@ -38,6 +44,7 @@ export function loadEnv(): EnvConfig {
     openaiKey: OPENAI_API_KEY,
     anthropicKey: ANTHROPIC_API_KEY,
     stripeSecretKey: STRIPE_SECRET_KEY,
+    googleClientId: GOOGLE_CLIENT_ID,
     databaseUrl: DATABASE_URL,
     captureStorageDir: CAPTURE_STORAGE_DIR,
     captureImageMaxBytes: parseInt(CAPTURE_IMAGE_MAX_BYTES, 10),

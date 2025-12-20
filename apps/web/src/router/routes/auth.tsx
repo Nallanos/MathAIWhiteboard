@@ -17,22 +17,29 @@ export const loginRoute = createRoute({
   beforeLoad: () => {
     // Redirect to dashboard if already authenticated
     if (isAuthenticated()) {
-      throw redirect({ to: '/' });
+      throw redirect({ to: '/app' });
     }
   },
   component: LoginPage,
 });
 
-export const registerRoute = createRoute({
+export const signupRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/register',
+  path: '/signup',
   beforeLoad: () => {
-    // Redirect to dashboard if already authenticated
     if (isAuthenticated()) {
-      throw redirect({ to: '/' });
+      throw redirect({ to: '/app' });
     }
   },
   component: RegisterPage,
+});
+
+export const registerRedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/register',
+  beforeLoad: () => {
+    throw redirect({ to: '/signup' });
+  }
 });
 
 function LoginPage() {

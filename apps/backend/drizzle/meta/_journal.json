@@ -22,6 +22,41 @@
       "when": 1763668808771,
       "tag": "0002_volatile_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1766073390102,
+      "tag": "0003_minor_eternity",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1766075890894,
+      "tag": "0004_colorful_harpoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1766163472570,
+      "tag": "0005_flaky_patch",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1766165564687,
+      "tag": "0006_optimal_the_hunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1766173117360,
+      "tag": "0007_daffy_stark_industries",
+      "breakpoints": true
     }
   ]
 }

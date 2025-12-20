@@ -10,11 +10,14 @@ import { useNavigate } from '@tanstack/react-router';
 import '@excalidraw/excalidraw/index.css';
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/dist/types/excalidraw/types';
 import { AISidebar } from '../components/AISidebar';
+import type { ChatMode } from '@mathboard/shared';
 import { CollaborationStatus } from '../components/Collaboration/Status';
 import { useAI } from '../hooks/useAI';
 import { useCollab } from '../hooks/useCollab';
 import { useBoardPersistence } from '../hooks/useBoardPersistence';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
+import type { BoardSnapshot } from '@mathboard/shared';
 
 // Lazy load Excalidraw to avoid SSR issues
 const Excalidraw = lazy(() => 
@@ -27,7 +30,7 @@ interface WhiteboardProps {
 
 export function Whiteboard({ boardId }: WhiteboardProps) {
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user, token, refreshMe } = useAuth();
   const [autoCapture] = useState(false);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -91,7 +94,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   
   const { saveBoard } = useBoardPersistence(api, { boardId, token });
 
-  const { messages, sendPrompt, isBusy, resetConversation } = useAI(api, {
+  const { messages, sendPrompt, isBusy, resetConversation, conversationId, tutor, fetchTutorSession, patchTutorState } = useAI(api, {
     boardId,
     autoCapture,
     locale: 'fr',
@@ -99,7 +102,116 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     getSceneVersion
   });
 
-  const { peerCount } = useCollab(
+  const [chatMode, setChatMode] = useState<ChatMode>('board');
+  const [model, setModel] = useState<string>('gemini-2.0-flash');
+  const [premiumAvailable, setPremiumAvailable] = useState<boolean>(false);
+
+  useEffect(() => {
+    refreshMe().catch(() => {});
+  }, [refreshMe]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setChatMode('board');
+      return;
+    }
+
+    const key = `chatMode:${conversationId}`;
+    const stored = window.localStorage.getItem(key);
+    if (stored === 'board' || stored === 'tutor') {
+      setChatMode(stored);
+      return;
+    }
+
+    // Migration: old clients may have stored 'quick'
+    setChatMode('board');
+    window.localStorage.setItem(key, 'board');
+  }, [conversationId]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem('aiModel');
+    if (stored === 'gemini-2.0-flash') {
+      setModel(stored);
+      return;
+    }
+    if (stored === 'gemini-3-flash' || stored === 'gemini-3-flash-preview') {
+      // Migrate legacy id -> documented preview id.
+      setModel('gemini-3-flash-preview');
+      window.localStorage.setItem('aiModel', 'gemini-3-flash-preview');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    apiFetch('/api/ai/models', { token })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const available = Boolean(data?.premiumAvailable);
+        setPremiumAvailable(available);
+        if (!available && model === 'gemini-3-flash-preview') {
+          setModel('gemini-2.0-flash');
+          window.localStorage.setItem('aiModel', 'gemini-2.0-flash');
+        }
+      })
+      .catch(() => {
+        setPremiumAvailable(false);
+        if (model === 'gemini-3-flash-preview') {
+          setModel('gemini-2.0-flash');
+          window.localStorage.setItem('aiModel', 'gemini-2.0-flash');
+        }
+      });
+  }, [token, model]);
+
+  const handleModelChange = useCallback((next: string) => {
+    const value = next === 'gemini-3-flash-preview' ? 'gemini-3-flash-preview' : 'gemini-2.0-flash';
+    if (value === 'gemini-3-flash-preview' && !premiumAvailable) {
+      return;
+    }
+    setModel(value);
+    window.localStorage.setItem('aiModel', value);
+  }, [premiumAvailable]);
+
+  const handleChatModeChange = useCallback(
+    (mode: ChatMode) => {
+      setChatMode(mode);
+      if (conversationId) {
+        window.localStorage.setItem(`chatMode:${conversationId}`, mode);
+      }
+    },
+    [conversationId]
+  );
+
+  useEffect(() => {
+    if (chatMode !== 'tutor') return;
+    if (!conversationId) return;
+    // Load persisted tutor session (if any) when switching to tutor mode
+    fetchTutorSession().catch((e) => console.error('Failed to fetch tutor session', e));
+  }, [chatMode, conversationId, fetchTutorSession]);
+
+  const handleTutorStepClick = useCallback(
+    async (stepId: string) => {
+      if (!tutor) return;
+
+      const completedSet = new Set(tutor.state.completedStepIds);
+      if (completedSet.has(stepId)) return;
+
+      // First click selects the step. Second click (when it's already current) completes it.
+      if (tutor.state.currentStepId !== stepId) {
+        await patchTutorState({ currentStepId: stepId, status: 'active' });
+        return;
+      }
+
+      completedSet.add(stepId);
+      const completedStepIds = Array.from(completedSet);
+      const nextCurrent = tutor.plan.steps.find((s) => !completedSet.has(s.id))?.id ?? null;
+      const status = nextCurrent ? 'active' : 'completed';
+
+      await patchTutorState({ completedStepIds, currentStepId: nextCurrent, status });
+    },
+    [tutor, patchTutorState]
+  );
+
+  const { peerCount, broadcastSnapshot, shouldBroadcast } = useCollab(
     {
       boardId,
       userId: user?.id || 'anon',
@@ -108,6 +220,9 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     api
   );
 
+  const broadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSnapshotRef = useRef<BoardSnapshot | null>(null);
+
   const handleAppStateChange = useCallback(
     (elements: readonly any[], appState: AppState, files: any) => {
       if (appState?.theme) {
@@ -115,8 +230,28 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
       }
       sceneVersionRef.current += 1;
       saveBoard(elements, appState, files);
+
+      if (!shouldBroadcast()) return;
+      // Remove transient appState bits to reduce noise.
+      const { collaborators, ...cleanAppState } = appState as any;
+      pendingSnapshotRef.current = {
+        id: boardId,
+        elements: elements as any,
+        appState: cleanAppState,
+        files,
+        capturedAt: new Date().toISOString(),
+      };
+
+      if (broadcastTimeoutRef.current) {
+        clearTimeout(broadcastTimeoutRef.current);
+      }
+      broadcastTimeoutRef.current = setTimeout(() => {
+        if (!pendingSnapshotRef.current) return;
+        broadcastSnapshot(pendingSnapshotRef.current);
+        pendingSnapshotRef.current = null;
+      }, 120);
     },
-    [saveBoard]
+    [saveBoard, broadcastSnapshot, shouldBroadcast]
   );
 
   const handleBack = () => {
@@ -139,7 +274,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
           </div>
         </div>
         <CollaborationStatus boardId={boardId} peerCount={peerCount} />
-        <div className="absolute top-4 left-4 z-10 flex gap-2">
+        <div className="absolute top-16 left-4 z-10 flex gap-2">
            <button onClick={handleBack} className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50">
              ← Back
            </button>
@@ -170,10 +305,21 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
           >
             <AISidebar
               messages={messages}
-              onSend={sendPrompt}
+              onSend={async (prompt) => {
+                await sendPrompt(prompt, chatMode, { model });
+                await refreshMe();
+              }}
               isBusy={isBusy}
               theme={theme}
               onNewChat={resetConversation}
+              chatMode={chatMode}
+              onChatModeChange={handleChatModeChange}
+              model={model}
+              onModelChange={handleModelChange}
+              premiumAvailable={premiumAvailable}
+              aiCredits={user?.aiCredits ?? null}
+              tutor={tutor}
+              onTutorStepClick={handleTutorStepClick}
               onClose={() => setSidebarOpen(false)}
             />
           </div>

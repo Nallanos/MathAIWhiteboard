@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "ai_credits_reset_at" timestamp with time zone DEFAULT now() NOT NULL;

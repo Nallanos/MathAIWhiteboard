@@ -7,4 +7,7 @@ apps/web/dist/
 apps/backend/dist/
 apps/backend/data/
 packages/shared/dist/
+packages/config/dist/
+packages/config/*.tsbuildinfo
+.copilot/
 *.log

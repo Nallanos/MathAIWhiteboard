@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AIMessage } from '@mathboard/shared';
+import type { AIMessage, ChatMode, TutorPayload } from '@mathboard/shared';
 import { ChatMessage } from './ChatMessage';
 import { InputBox } from './InputBox';
 import { SIDEBAR_COPY } from './copy';
@@ -10,6 +10,14 @@ interface Props {
   isBusy: boolean;
   theme: 'light' | 'dark';
   onNewChat: () => void;
+  chatMode: ChatMode;
+  onChatModeChange: (mode: ChatMode) => void;
+  model: string;
+  onModelChange: (model: string) => void;
+  premiumAvailable: boolean;
+  aiCredits: number | null;
+  tutor?: TutorPayload | null;
+  onTutorStepClick?: (stepId: string) => void;
   onClose?: () => void;
 }
 
@@ -19,6 +27,14 @@ export function AISidebar({
   isBusy,
   theme,
   onNewChat,
+  chatMode,
+  onChatModeChange,
+  model,
+  onModelChange,
+  premiumAvailable,
+  aiCredits,
+  tutor,
+  onTutorStepClick,
   onClose
 }: Props) {
   const [currentPrompt, setCurrentPrompt] = useState('');
@@ -105,15 +121,22 @@ export function AISidebar({
           <p className={busyTextClasses}>{copy.busyState}</p>
         )}
       </div>
+
       <InputBox
         value={currentPrompt}
         disabled={isBusy}
         onChange={setCurrentPrompt}
         onSubmit={handleSubmit}
-        label={copy.composerLabel}
         placeholder={copy.composerPlaceholder}
-        buttonLabel={copy.composerCTA}
         theme={theme}
+        chatMode={chatMode}
+        onChatModeChange={onChatModeChange}
+        model={model}
+        onModelChange={onModelChange}
+        premiumAvailable={premiumAvailable}
+        aiCredits={aiCredits}
+        tutor={tutor}
+        onTutorStepClick={onTutorStepClick}
       />
     </aside>
   );

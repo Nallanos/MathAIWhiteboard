@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { z } from 'zod';
+import crypto from 'node:crypto';
 
 type Database = NodePgDatabase<typeof schema>;
 
@@ -58,8 +58,39 @@ export class AuthService {
     return { user: { id: user.id, email: user.email, displayName: user.displayName }, token };
   }
 
+  async loginWithGoogle(email: string, displayName: string) {
+    const existing = await this.db.query.users.findFirst({
+      where: eq(schema.users.email, email)
+    });
+
+    if (existing) {
+      return {
+        user: { id: existing.id, email: existing.email, displayName: existing.displayName },
+        token: this.generateToken(existing.id)
+      };
+    }
+
+    const passwordHash = await this.createPlaceholderPasswordHash();
+    const [user] = await this.db
+      .insert(schema.users)
+      .values({
+        email,
+        displayName,
+        passwordHash
+      })
+      .returning();
+
+    const token = this.generateToken(user.id);
+    return { user: { id: user.id, email: user.email, displayName: user.displayName }, token };
+  }
+
   private generateToken(userId: string) {
     return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+  }
+
+  private async createPlaceholderPasswordHash() {
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    return bcrypt.hash(randomPassword, 10);
   }
 
   verifyToken(token: string) {

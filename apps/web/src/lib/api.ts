@@ -23,17 +23,15 @@ export async function apiFetch(
   });
 
   if (response.status === 401) {
-    // Clear auth and redirect to login
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('authUser');
-    
+    // Clear auth and redirect to landing
     if (logoutCallback) {
       logoutCallback();
-    }
-    
-    // Force redirect if not already on auth page
-    if (window.location.pathname !== '/') {
-      window.location.href = '/';
+    } else {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('authUser');
+      if (window.location.pathname !== '/') {
+        window.location.replace('/');
+      }
     }
   }
 

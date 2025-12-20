@@ -23,9 +23,20 @@ RUN pnpm install --frozen-lockfile
 WORKDIR /app/packages/shared
 RUN pnpm build
 
-# Set production API URL
-ENV VITE_BACKEND_URL=https://mathbordai.duckdns.org
-ENV VITE_WS_URL=https://mathbordai.duckdns.org
+# Build-time configuration (Vite reads env at build time)
+ARG VITE_BACKEND_URL=https://mathbordai.duckdns.org
+ARG VITE_WS_URL=https://mathbordai.duckdns.org
+ARG VITE_GOOGLE_CLIENT_ID=
+ARG VITE_POSTHOG_ENABLED=false
+ARG VITE_POSTHOG_KEY=
+ARG VITE_POSTHOG_HOST=
+
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_POSTHOG_ENABLED=$VITE_POSTHOG_ENABLED
+ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY
+ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 
 # Build the frontend
 WORKDIR /app/apps/web

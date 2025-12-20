@@ -1,5 +1,33 @@
 export type AIMode = 'auto' | 'manual';
 
+export type ChatMode = 'board' | 'tutor';
+
+export type TutorHintPolicy = 'dont_give_full_solution' | 'guided' | 'direct';
+
+export interface TutorPlanStep {
+  id: string;
+  title: string;
+  success_criteria: string[];
+  hint_policy: TutorHintPolicy;
+}
+
+export interface TutorPlan {
+  goal: string;
+  prerequisites: string[];
+  common_mistakes: string[];
+  steps: TutorPlanStep[];
+}
+
+export interface TutorState {
+  currentStepId: string | null;
+  completedStepIds: string[];
+}
+
+export interface TutorPayload {
+  plan: TutorPlan;
+  state: TutorState;
+}
+
 export interface AIMessage {
   id: string;
   boardId: string;
@@ -35,7 +63,19 @@ export interface AIPromptPayload {
   locale: 'fr' | 'en';
   mode: AIMode;
   captureId: string | null;
+  chatMode?: ChatMode;
   boardVersion?: number;
   provider?: 'google' | 'openai' | 'anthropic';
   model?: string;
+}
+
+export interface AIAnalyzeResponse {
+  status: 'completed';
+  message: string;
+  provider: string;
+  model: string;
+  strategy: 'vision' | 'text';
+  captureId?: string | null;
+  tutor?: TutorPayload;
+  aiCreditsRemaining?: number;
 }

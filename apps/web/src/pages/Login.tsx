@@ -5,10 +5,16 @@
  * Redirects to dashboard on successful login.
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useAuth } from '../context/AuthContext';
 import { env } from '../lib/env';
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
 
 export function Login() {
   const navigate = useNavigate();
@@ -17,6 +23,8 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,13 +45,86 @@ export function Login() {
       }
 
       login(data.token, data.user);
-      navigate({ to: '/' });
+      navigate({ to: '/app' });
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  const handleGoogleCredential = useCallback(async (credential: string) => {
+    setError('');
+    setGoogleLoading(true);
+    try {
+      const res = await fetch(`${env.backendUrl}/api/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Google login failed');
+      }
+
+      login(data.token, data.user);
+      navigate({ to: '/app' });
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [login, navigate]);
+
+  useEffect(() => {
+    if (!env.googleClientId) return;
+
+    const scriptId = 'google-identity-services';
+
+    const initializeGoogle = () => {
+      if (!window.google || !googleButtonRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: env.googleClientId,
+        callback: (response: { credential?: string }) => {
+          if (response.credential) {
+            handleGoogleCredential(response.credential);
+          }
+        }
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: '100%'
+      });
+    };
+
+    const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (existingScript) {
+      if (existingScript.dataset.loaded) {
+        initializeGoogle();
+      } else {
+        existingScript.addEventListener('load', initializeGoogle, { once: true });
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.id = scriptId;
+    script.dataset.loaded = 'false';
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      initializeGoogle();
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      script.onload = null;
+    };
+  }, [handleGoogleCredential, env.googleClientId]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
@@ -88,9 +169,25 @@ export function Login() {
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-200" />
+            <span className="text-xs uppercase tracking-wide text-gray-400">or</span>
+            <div className="h-px flex-1 bg-gray-200" />
+          </div>
+
+          <div>
+            {env.googleClientId ? (
+              <div ref={googleButtonRef} className="flex justify-center" aria-busy={googleLoading} />
+            ) : (
+              <div className="rounded-md bg-gray-100 px-3 py-2 text-center text-sm text-gray-500">
+                Google Sign-In not configured
+              </div>
+            )}
+          </div>
           
           <div className="text-center">
-            <Link to="/register" className="text-sm text-indigo-600 hover:text-indigo-500">
+            <Link to="/signup" className="text-sm text-indigo-600 hover:text-indigo-500">
               Don't have an account? Sign up
             </Link>
           </div>

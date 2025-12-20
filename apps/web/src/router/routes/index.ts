@@ -5,5 +5,6 @@
  */
 
 export { rootRoute } from './__root';
-export { loginRoute, registerRoute } from './auth';
+export { loginRoute, signupRoute, registerRedirectRoute } from './auth';
+export { landingRoute } from './landing';
 export { dashboardRoute, whiteboardRoute } from './protected';

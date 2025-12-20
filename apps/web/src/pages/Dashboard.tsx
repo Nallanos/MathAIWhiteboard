@@ -49,7 +49,7 @@ export function Dashboard() {
       });
       const data = await res.json();
       if (data.board?.id) {
-        navigate({ to: '/board/$boardId', params: { boardId: data.board.id } });
+        navigate({ to: '/app/board/$boardId', params: { boardId: data.board.id } });
       }
     } catch (e) {
       console.error('Failed to create board', e);
@@ -102,7 +102,7 @@ export function Dashboard() {
                 className="group relative flex h-64 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md"
               >
                 <div 
-                  onClick={() => navigate({ to: '/board/$boardId', params: { boardId: board.id } })}
+                  onClick={() => navigate({ to: '/app/board/$boardId', params: { boardId: board.id } })}
                   className="flex-1 bg-gray-100 cursor-pointer overflow-hidden"
                 >
                   {board.thumbnailUrl ? (
