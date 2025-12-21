@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { AuthService } from '../services/auth-service.js';
 import { OAuth2Client } from 'google-auth-library';
 import { captureServerEvent } from '../lib/posthog.js';
+import https from 'node:https';
+import dns from 'node:dns';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -33,26 +35,71 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
 
   const oauthClient = new OAuth2Client(allowedAudiences[0]);
 
-  const fetchJsonWithTimeout = async (url: string, timeoutMs: number) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { 'accept': 'application/json' },
-        signal: controller.signal,
+  const getJsonOverHttpsIPv4 = async (url: string, timeoutMs: number) => {
+    return await new Promise<{
+      ok: boolean;
+      status: number;
+      json: any;
+      text: string;
+      error?: { name?: string; code?: string; message?: string };
+    }>((resolve) => {
+      const u = new URL(url);
+
+      const req = https.request(
+        {
+          protocol: u.protocol,
+          hostname: u.hostname,
+          port: u.port ? Number(u.port) : undefined,
+          path: `${u.pathname}${u.search}`,
+          method: 'GET',
+          headers: { accept: 'application/json' },
+          family: 4,
+          lookup: (hostname, options, cb) => {
+            dns.lookup(hostname, { ...options, family: 4 }, cb);
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+          res.on('end', () => {
+            const text = Buffer.concat(chunks).toString('utf8');
+            let json: any = null;
+            try {
+              json = text ? JSON.parse(text) : null;
+            } catch {
+              json = null;
+            }
+
+            const status = res.statusCode ?? 0;
+            resolve({ ok: status >= 200 && status < 300, status, json, text });
+          });
+        }
+      );
+
+      req.on('error', (err: any) => {
+        resolve({
+          ok: false,
+          status: 0,
+          json: null,
+          text: '',
+          error: {
+            name: typeof err?.name === 'string' ? err.name : undefined,
+            code: typeof err?.code === 'string' ? err.code : undefined,
+            message: typeof err?.message === 'string' ? err.message : String(err),
+          },
+        });
       });
-      const text = await res.text();
-      let json: any = null;
-      try {
-        json = text ? JSON.parse(text) : null;
-      } catch {
-        json = null;
-      }
-      return { ok: res.ok, status: res.status, json, text };
-    } finally {
-      clearTimeout(timeout);
-    }
+
+      req.setTimeout(timeoutMs, () => {
+        try {
+          req.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
+        } catch {
+          req.destroy();
+        }
+      });
+
+      req.end();
+    });
   };
 
   type GoogleTokenInfo = {
@@ -90,7 +137,27 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
 
   const verifyViaTokenInfo = async (idToken: string) => {
     const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-    const { ok, status, json, text } = await fetchJsonWithTimeout(url, 3500);
+    let ok: boolean;
+    let status: number;
+    let json: any;
+    let text: string;
+
+    try {
+      const res = await getJsonOverHttpsIPv4(url, 3500);
+      ok = res.ok;
+      status = res.status;
+      json = res.json;
+      text = res.text;
+    } catch (error: any) {
+      // Network / DNS / TLS errors should not hard-fail Google login because
+      // we can still validate the JWT via google-auth-library (certs endpoint).
+      const message =
+        typeof error?.message === 'string' && error.message
+          ? error.message.slice(0, 300)
+          : 'tokeninfo_fetch_failed';
+      return { ok: false as const, status: 0, message };
+    }
+
     if (!ok) {
       const message = typeof text === 'string' && text ? text.slice(0, 300) : undefined;
       return { ok: false as const, status, message };
