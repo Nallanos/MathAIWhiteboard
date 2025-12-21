@@ -23,6 +23,8 @@ dist
 # Environment
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
 
 # Logs

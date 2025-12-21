@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 
 export interface EnvConfig {
   port: number;
@@ -15,6 +15,12 @@ export interface EnvConfig {
 }
 
 export function loadEnv(): EnvConfig {
+  const isRailway = Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT);
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!isProd && !isRailway) {
+    dotenv.config();
+  }
+
   const {
     PORT,
     CORS_ORIGIN = 'http://localhost:5173',
@@ -32,19 +38,30 @@ export function loadEnv(): EnvConfig {
     CAPTURE_SCENE_MAX_BYTES = '1048576'
   } = process.env;
 
-  const resolvedDatabaseUrl = (
-    DATABASE_URL ||
-    DATABASE_PUBLIC_URL ||
-    POSTGRES_URL ||
-    'postgres://postgres:postgres@localhost:5432/whiteboardai'
-  ).trim();
+  const primary = (DATABASE_URL || '').trim();
+  const publicUrl = (DATABASE_PUBLIC_URL || '').trim();
+  const postgresUrl = (POSTGRES_URL || '').trim();
+
+  const isLocalhostUrl = (value: string) => {
+    try {
+      const host = new URL(value).hostname;
+      return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    } catch {
+      return false;
+    }
+  };
+
+  // On Railway, a stray localhost DATABASE_URL (often coming from a committed .env) will break DB access.
+  // Prefer Railway-provided URLs when available.
+  let resolvedDatabaseUrl =
+    (primary && (!isRailway || !isLocalhostUrl(primary)) ? primary : '') ||
+    publicUrl ||
+    postgresUrl ||
+    'postgres://postgres:postgres@localhost:5432/whiteboardai';
 
   // Helpful warning in production-like environments: localhost DB URLs will always fail.
   try {
-    const isProdLike =
-      process.env.NODE_ENV === 'production' ||
-      Boolean(process.env.RAILWAY_ENVIRONMENT) ||
-      Boolean(process.env.RAILWAY_PROJECT_ID);
+    const isProdLike = isProd || isRailway;
     if (isProdLike) {
       const host = new URL(resolvedDatabaseUrl).hostname;
       if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
