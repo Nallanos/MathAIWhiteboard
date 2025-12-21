@@ -62,6 +62,14 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
     return 'unknown';
   };
 
+  const classifyByErrorCode = (code: string | undefined): string | undefined => {
+    if (!code) return undefined;
+    if (code === 'ECONNREFUSED') return 'network_refused';
+    if (code === 'ETIMEDOUT') return 'network_timeout';
+    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns_failed';
+    return undefined;
+  };
+
   const getBuildCommit = (): string | undefined => {
     return (
       process.env.RAILWAY_GIT_COMMIT_SHA ||
@@ -199,7 +207,7 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
       res.status(401).json({
         error: `Invalid Google token${hint}`,
         details: {
-          reason,
+          reason: classifyByErrorCode(safeCode) ?? reason,
           message: safeMessage,
           errorName: safeName,
           errorCode: safeCode,
@@ -210,6 +218,11 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
           tokenExp: decodedExp,
           serverTime: new Date().toISOString(),
           expectedAudiences: allowedAudiences,
+          proxy: {
+            httpProxySet: Boolean(process.env.HTTP_PROXY || process.env.http_proxy),
+            httpsProxySet: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy),
+            noProxySet: Boolean(process.env.NO_PROXY || process.env.no_proxy),
+          },
         },
       });
     }

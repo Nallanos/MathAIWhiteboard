@@ -50,6 +50,36 @@ try {
 async function bootstrap() {
   const config = loadEnv();
   console.log('Allowed CORS Origins:', config.corsOrigin);
+
+  // If the environment sets an HTTP proxy (common in some PaaS networks), gaxios/google-auth-library
+  // may route cert/JWKS fetches through it. Misconfigured proxies often manifest as ECONNREFUSED.
+  // Ensure Google auth endpoints bypass proxies.
+  const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
+  const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  if (httpProxy || httpsProxy) {
+    const googleNoProxyHosts = [
+      'accounts.google.com',
+      'google.com',
+      'googleapis.com',
+      'www.googleapis.com',
+      'oauth2.googleapis.com',
+    ];
+
+    const mergeNoProxy = (current: string | undefined) => {
+      const existing = (current || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const merged = Array.from(new Set([...existing, ...googleNoProxyHosts]));
+      return merged.join(',');
+    };
+
+    process.env.NO_PROXY = mergeNoProxy(process.env.NO_PROXY);
+    process.env.no_proxy = mergeNoProxy(process.env.no_proxy);
+
+    console.log('[env] Proxy detected; setting NO_PROXY for Google auth hosts');
+  }
   
   const app = express();
   const db = getDb(config);
