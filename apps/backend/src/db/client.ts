@@ -12,8 +12,22 @@ let db: Database | null = null;
 
 export function getDb(config: EnvConfig) {
   if (!db) {
+    const connectionString = config.databaseUrl;
+    const shouldUseSsl =
+      /\.proxy\.rlwy\.net\b/i.test(connectionString) ||
+      /sslmode=require/i.test(connectionString) ||
+      (process.env.DATABASE_SSL || '').toLowerCase() === 'true';
+
     const pool = new Pool({
-      connectionString: config.databaseUrl
+      connectionString,
+      ...(shouldUseSsl
+        ? {
+            ssl: {
+              // Railway public proxy uses TLS; CA chain may not be present in slim images.
+              rejectUnauthorized: false,
+            },
+          }
+        : null),
     });
     db = drizzle(pool, { schema });
   }

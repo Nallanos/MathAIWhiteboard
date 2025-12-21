@@ -24,11 +24,38 @@ export function loadEnv(): EnvConfig {
     STRIPE_SECRET_KEY,
     GOOGLE_CLIENT_ID = '',
     VITE_GOOGLE_CLIENT_ID = '',
-    DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/whiteboardai',
+    DATABASE_URL = '',
+    DATABASE_PUBLIC_URL = '',
+    POSTGRES_URL = '',
     CAPTURE_STORAGE_DIR = './data/captures',
     CAPTURE_IMAGE_MAX_BYTES = '5242880',
     CAPTURE_SCENE_MAX_BYTES = '1048576'
   } = process.env;
+
+  const resolvedDatabaseUrl = (
+    DATABASE_URL ||
+    DATABASE_PUBLIC_URL ||
+    POSTGRES_URL ||
+    'postgres://postgres:postgres@localhost:5432/whiteboardai'
+  ).trim();
+
+  // Helpful warning in production-like environments: localhost DB URLs will always fail.
+  try {
+    const isProdLike =
+      process.env.NODE_ENV === 'production' ||
+      Boolean(process.env.RAILWAY_ENVIRONMENT) ||
+      Boolean(process.env.RAILWAY_PROJECT_ID);
+    if (isProdLike) {
+      const host = new URL(resolvedDatabaseUrl).hostname;
+      if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+        console.warn(
+          '[env] DATABASE_URL points to localhost in production; set DATABASE_URL to your Railway Postgres URL'
+        );
+      }
+    }
+  } catch {
+    // ignore invalid URLs here; pool will error later
+  }
 
   const resolvePort = () => {
     const candidates = [
@@ -68,7 +95,7 @@ export function loadEnv(): EnvConfig {
     anthropicKey: ANTHROPIC_API_KEY,
     stripeSecretKey: STRIPE_SECRET_KEY,
     googleClientId: resolvedGoogleClientId,
-    databaseUrl: DATABASE_URL,
+    databaseUrl: resolvedDatabaseUrl,
     captureStorageDir: CAPTURE_STORAGE_DIR,
     captureImageMaxBytes: parseInt(CAPTURE_IMAGE_MAX_BYTES, 10),
     captureSceneMaxBytes: parseInt(CAPTURE_SCENE_MAX_BYTES, 10)
