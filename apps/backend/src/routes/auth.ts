@@ -137,30 +137,17 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
 
   const verifyViaTokenInfo = async (idToken: string) => {
     const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-    let ok: boolean;
-    let status: number;
-    let json: any;
-    let text: string;
-
-    try {
-      const res = await getJsonOverHttpsIPv4(url, 3500);
-      ok = res.ok;
-      status = res.status;
-      json = res.json;
-      text = res.text;
-    } catch (error: any) {
-      // Network / DNS / TLS errors should not hard-fail Google login because
-      // we can still validate the JWT via google-auth-library (certs endpoint).
-      const message =
-        typeof error?.message === 'string' && error.message
-          ? error.message.slice(0, 300)
-          : 'tokeninfo_fetch_failed';
-      return { ok: false as const, status: 0, message };
-    }
+    const res = await getJsonOverHttpsIPv4(url, 3500);
+    const ok = res.ok;
+    const status = res.status;
+    const json = res.json;
+    const text = res.text;
 
     if (!ok) {
-      const message = typeof text === 'string' && text ? text.slice(0, 300) : undefined;
-      return { ok: false as const, status, message };
+      const message =
+        (typeof text === 'string' && text ? text.slice(0, 300) : undefined) ||
+        (res.error?.message ? res.error.message.slice(0, 300) : undefined);
+      return { ok: false as const, status, message, error: res.error };
     }
 
     const info = (json || {}) as GoogleTokenInfo;
@@ -207,6 +194,71 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
         iss,
       },
     };
+  };
+
+  const serializeError = (err: any) => {
+    const base = {
+      name: typeof err?.name === 'string' ? err.name : undefined,
+      code: typeof err?.code === 'string' ? err.code : undefined,
+      message:
+        typeof err?.message === 'string'
+          ? err.message.slice(0, 500)
+          : (() => {
+              try {
+                return String(err).slice(0, 500);
+              } catch {
+                return undefined;
+              }
+            })(),
+    };
+
+    const maybeErrors: any[] | undefined = Array.isArray(err?.errors) ? err.errors : undefined;
+    if (maybeErrors && maybeErrors.length) {
+      return {
+        ...base,
+        errors: maybeErrors.slice(0, 5).map((e) => ({
+          name: typeof e?.name === 'string' ? e.name : undefined,
+          code: typeof e?.code === 'string' ? e.code : undefined,
+          message:
+            typeof e?.message === 'string'
+              ? e.message.slice(0, 300)
+              : (() => {
+                  try {
+                    return String(e).slice(0, 300);
+                  } catch {
+                    return undefined;
+                  }
+                })(),
+          address: typeof e?.address === 'string' ? e.address : undefined,
+          port: typeof e?.port === 'number' ? e.port : undefined,
+        })),
+      };
+    }
+
+    const cause = err?.cause;
+    if (cause) {
+      return {
+        ...base,
+        cause: {
+          name: typeof cause?.name === 'string' ? cause.name : undefined,
+          code: typeof cause?.code === 'string' ? cause.code : undefined,
+          message:
+            typeof cause?.message === 'string'
+              ? cause.message.slice(0, 300)
+              : (() => {
+                  try {
+                    return String(cause).slice(0, 300);
+                  } catch {
+                    return undefined;
+                  }
+                })(),
+          address: typeof cause?.address === 'string' ? cause.address : undefined,
+          port: typeof cause?.port === 'number' ? cause.port : undefined,
+        },
+      };
+    }
+
+    return base;
   };
 
   const tryDecodeJwtPayload = (token: string): Record<string, unknown> | null => {
@@ -333,7 +385,8 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
         email = tokenInfo.payload.email;
         displayName = tokenInfo.payload.name;
       } else {
-        // Fallback to local JWT verification via Google's certs
+        // If tokeninfo failed due to network (status=0), we can try verifyIdToken, but if
+        // the environment blocks outbound HTTPS to Google entirely, both will fail.
         const ticket = await oauthClient.verifyIdToken({
           idToken: payload.data.credential,
           audience: allowedAudiences,
@@ -406,6 +459,7 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
           message: safeMessage,
           errorName: safeName,
           errorCode: safeCode,
+          error: serializeError(error),
           buildCommit: getBuildCommit(),
           tokenAud: decodedAud,
           tokenIss: decodedIss,
