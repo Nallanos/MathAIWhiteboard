@@ -373,20 +373,19 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
       });
     }
 
+    let email: string | undefined;
+    let displayName: string | undefined;
+
+    // 1) Verify Google token (only failures here should be reported as 401 Invalid Google token)
     try {
       // Prefer tokeninfo endpoint first (uses oauth2.googleapis.com). In some hosted environments
       // google-auth-library fails to fetch certs/JWKS with ECONNREFUSED.
       const tokenInfo = await verifyViaTokenInfo(payload.data.credential);
 
-      let email: string | undefined;
-      let displayName: string | undefined;
-
       if (tokenInfo.ok) {
         email = tokenInfo.payload.email;
         displayName = tokenInfo.payload.name;
       } else {
-        // If tokeninfo failed due to network (status=0), we can try verifyIdToken, but if
-        // the environment blocks outbound HTTPS to Google entirely, both will fail.
         const ticket = await oauthClient.verifyIdToken({
           idToken: payload.data.credential,
           audience: allowedAudiences,
@@ -404,20 +403,6 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
         email = tokenPayload.email;
         displayName = tokenPayload.name || tokenPayload.email;
       }
-
-      if (!email || !displayName) {
-        return res.status(401).json({ error: 'Invalid Google token' });
-      }
-
-      const result = await authService.loginWithGoogle(email, displayName);
-
-      captureServerEvent('user_logged_in', result.user.id, {
-        email: result.user.email,
-        displayName: result.user.displayName,
-        method: 'google',
-      });
-
-      res.json(result);
     } catch (error: any) {
       const decoded = tryDecodeJwtPayload(payload.data.credential);
       const decodedAud =
@@ -474,6 +459,48 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
           },
         },
       });
+      return;
+    }
+
+    if (!email || !displayName) {
+      return res.status(401).json({ error: 'Invalid Google token' });
+    }
+
+    // 2) Create/login user in DB (DB failures should not be reported as token failures)
+    try {
+      const result = await authService.loginWithGoogle(email, displayName);
+
+      captureServerEvent('user_logged_in', result.user.id, {
+        email: result.user.email,
+        displayName: result.user.displayName,
+        method: 'google',
+      });
+
+      return res.json(result);
+    } catch (error: any) {
+      const serialized = serializeError(error);
+      const code = typeof error?.code === 'string' ? error.code : undefined;
+      const message = typeof error?.message === 'string' ? error.message : '';
+      const combined = `${message} ${JSON.stringify(serialized)}`;
+
+      const looksLikeDb =
+        /postgres|pg|database|ECONNREFUSED|ETIMEDOUT/i.test(combined) &&
+        /:5432\b|:6543\b/.test(combined);
+
+      if (looksLikeDb || code === 'ECONNREFUSED' || code === 'ETIMEDOUT') {
+        console.error('Google login failed (database unavailable)', serialized);
+        return res.status(503).json({
+          error: 'Database unavailable',
+          details: {
+            reason: 'database_unavailable',
+            error: serialized,
+            buildCommit: getBuildCommit(),
+          },
+        });
+      }
+
+      console.error('Google login failed (unexpected)', serialized);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
 }
