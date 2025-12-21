@@ -33,6 +33,115 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
 
   const oauthClient = new OAuth2Client(allowedAudiences[0]);
 
+  const fetchJsonWithTimeout = async (url: string, timeoutMs: number) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'accept': 'application/json' },
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      let json: any = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+      return { ok: res.ok, status: res.status, json, text };
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  type GoogleTokenInfo = {
+    aud?: string;
+    iss?: string;
+    email?: string;
+    email_verified?: string | boolean;
+    name?: string;
+    exp?: string | number;
+    iat?: string | number;
+    sub?: string;
+  };
+
+  const coerceBoolean = (v: unknown): boolean | undefined => {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'string') {
+      if (v.toLowerCase() === 'true') return true;
+      if (v.toLowerCase() === 'false') return false;
+    }
+    return undefined;
+  };
+
+  const coerceNumber = (v: unknown): number | undefined => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+      const n = Number.parseInt(v, 10);
+      if (Number.isFinite(n)) return n;
+    }
+    return undefined;
+  };
+
+  const isAllowedIssuer = (iss: unknown): boolean => {
+    return iss === 'https://accounts.google.com' || iss === 'accounts.google.com';
+  };
+
+  const verifyViaTokenInfo = async (idToken: string) => {
+    const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
+    const { ok, status, json, text } = await fetchJsonWithTimeout(url, 3500);
+    if (!ok) {
+      const message = typeof text === 'string' && text ? text.slice(0, 300) : undefined;
+      return { ok: false as const, status, message };
+    }
+
+    const info = (json || {}) as GoogleTokenInfo;
+    const aud = info.aud;
+    const iss = info.iss;
+    const email = info.email;
+    const emailVerified = coerceBoolean(info.email_verified);
+    const exp = coerceNumber(info.exp);
+    const iat = coerceNumber(info.iat);
+
+    if (!aud || !allowedAudiences.includes(aud)) {
+      return { ok: false as const, status: 401, message: 'audience_mismatch' };
+    }
+
+    if (!isAllowedIssuer(iss)) {
+      return { ok: false as const, status: 401, message: 'issuer_mismatch' };
+    }
+
+    if (!email) {
+      return { ok: false as const, status: 400, message: 'token_missing_email' };
+    }
+
+    if (emailVerified === false) {
+      return { ok: false as const, status: 401, message: 'email_not_verified' };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (typeof exp === 'number' && exp < nowSec - 30) {
+      return { ok: false as const, status: 401, message: 'token_expired' };
+    }
+
+    if (typeof iat === 'number' && iat > nowSec + 300) {
+      return { ok: false as const, status: 401, message: 'token_not_yet_valid' };
+    }
+
+    const displayName = info.name || email;
+    return {
+      ok: true as const,
+      payload: {
+        email,
+        email_verified: emailVerified,
+        name: displayName,
+        aud,
+        iss,
+      },
+    };
+  };
+
   const tryDecodeJwtPayload = (token: string): Record<string, unknown> | null => {
     try {
       const parts = token.split('.');
@@ -146,22 +255,41 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
     }
 
     try {
-      const ticket = await oauthClient.verifyIdToken({
-        idToken: payload.data.credential,
-        audience: allowedAudiences,
-      });
+      // Prefer tokeninfo endpoint first (uses oauth2.googleapis.com). In some hosted environments
+      // google-auth-library fails to fetch certs/JWKS with ECONNREFUSED.
+      const tokenInfo = await verifyViaTokenInfo(payload.data.credential);
 
-      const tokenPayload = ticket.getPayload();
-      if (!tokenPayload?.email) {
-        return res.status(400).json({ error: 'Google token missing email' });
+      let email: string | undefined;
+      let displayName: string | undefined;
+
+      if (tokenInfo.ok) {
+        email = tokenInfo.payload.email;
+        displayName = tokenInfo.payload.name;
+      } else {
+        // Fallback to local JWT verification via Google's certs
+        const ticket = await oauthClient.verifyIdToken({
+          idToken: payload.data.credential,
+          audience: allowedAudiences,
+        });
+
+        const tokenPayload = ticket.getPayload();
+        if (!tokenPayload?.email) {
+          return res.status(400).json({ error: 'Google token missing email' });
+        }
+
+        if (tokenPayload.email_verified === false) {
+          return res.status(401).json({ error: 'Google email not verified' });
+        }
+
+        email = tokenPayload.email;
+        displayName = tokenPayload.name || tokenPayload.email;
       }
 
-      if (tokenPayload.email_verified === false) {
-        return res.status(401).json({ error: 'Google email not verified' });
+      if (!email || !displayName) {
+        return res.status(401).json({ error: 'Invalid Google token' });
       }
 
-      const displayName = tokenPayload.name || tokenPayload.email;
-      const result = await authService.loginWithGoogle(tokenPayload.email, displayName);
+      const result = await authService.loginWithGoogle(email, displayName);
 
       captureServerEvent('user_logged_in', result.user.id, {
         email: result.user.email,
