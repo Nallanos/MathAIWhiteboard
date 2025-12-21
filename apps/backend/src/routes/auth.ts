@@ -184,13 +184,25 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
       const reason = classifyGoogleVerifyError(message);
       const hint = reason === 'audience_mismatch' ? ' (client id mismatch)' : '';
 
-      const safeMessage = message ? message.slice(0, 300) : undefined;
+      const fallbackString = (() => {
+        try {
+          return String(error);
+        } catch {
+          return '';
+        }
+      })();
+
+      const safeMessage = (message || fallbackString || '').slice(0, 500) || undefined;
+      const safeName = typeof error?.name === 'string' ? error.name : undefined;
+      const safeCode = typeof error?.code === 'string' ? error.code : undefined;
 
       res.status(401).json({
         error: `Invalid Google token${hint}`,
         details: {
           reason,
           message: safeMessage,
+          errorName: safeName,
+          errorCode: safeCode,
           buildCommit: getBuildCommit(),
           tokenAud: decodedAud,
           tokenIss: decodedIss,
