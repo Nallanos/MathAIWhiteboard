@@ -101,6 +101,14 @@ async function bootstrap() {
 
   // Health check endpoint for Railway
   app.get('/api/health', (_req, res) => {
+    const build = {
+      commit:
+        process.env.RAILWAY_GIT_COMMIT_SHA ||
+        process.env.GITHUB_SHA ||
+        process.env.VERCEL_GIT_COMMIT_SHA ||
+        undefined,
+    };
+
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 

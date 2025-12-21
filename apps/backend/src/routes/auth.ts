@@ -62,6 +62,15 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
     return 'unknown';
   };
 
+  const getBuildCommit = (): string | undefined => {
+    return (
+      process.env.RAILWAY_GIT_COMMIT_SHA ||
+      process.env.GITHUB_SHA ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      undefined
+    );
+  };
+
   app.post('/api/auth/register', async (req: Request, res: Response) => {
     const payload = registerSchema.safeParse(req.body);
     if (!payload.success) {
@@ -175,10 +184,14 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
       const reason = classifyGoogleVerifyError(message);
       const hint = reason === 'audience_mismatch' ? ' (client id mismatch)' : '';
 
+      const safeMessage = message ? message.slice(0, 300) : undefined;
+
       res.status(401).json({
         error: `Invalid Google token${hint}`,
         details: {
           reason,
+          message: safeMessage,
+          buildCommit: getBuildCommit(),
           tokenAud: decodedAud,
           tokenIss: decodedIss,
           tokenIat: decodedIat,
