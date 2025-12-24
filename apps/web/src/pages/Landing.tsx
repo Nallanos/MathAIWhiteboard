@@ -9,7 +9,7 @@ export function Landing() {
       <main className="mx-auto w-full max-w-3xl">
         <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-6 sm:p-10">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Un whiteboard avec une IA qui t’aide quand tu bloques sur un exercice
+            Un tableau blanc avec une IA qui t’aide quand tu bloques sur un exercice
           </h1>
           <p className="mt-3 text-base text-gray-700">
             Tu écris ton raisonnement. L’IA lit ce que tu fais et t’aide à avancer sans donner la réponse.
@@ -25,7 +25,7 @@ export function Landing() {
           <section className="mt-8">
             <h2 className="text-sm font-semibold text-gray-900">Ce que fait l’outil</h2>
             <ol className="mt-3 list-decimal pl-5 text-gray-700 space-y-2">
-              <li>Tu fais ton exercice sur un whiteboard.</li>
+              <li>Tu fais ton exercice sur un tableau blanc.</li>
               <li>L’IA analyse ce que tu écris.</li>
               <li>Elle te pose des questions et te guide quand tu bloques.</li>
             </ol>
