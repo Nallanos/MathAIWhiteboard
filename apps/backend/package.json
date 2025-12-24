@@ -28,6 +28,7 @@
     "google-auth-library": "^10.5.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "katex": "^0.16.25",
     "openai": "^6.9.1",
     "pg": "^8.11.5",
     "posthog-node": "^5.17.4",

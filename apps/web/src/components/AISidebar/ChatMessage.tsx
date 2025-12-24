@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { AIMessage } from '@mathboard/shared';
 import type { ReactNode, HTMLAttributes } from 'react';
+import { normalizeMathDelimiters } from './markdown';
 
 interface Props {
   message: AIMessage;
@@ -24,7 +25,9 @@ export function ChatMessage({ message, assistantLabel, userLabel, theme }: Props
   const isDark = theme === 'dark';
   
   // Hide the JSON board block from the chat UI
-  const displayContent = message.content.replace(/```json_board[\s\S]*?```/g, '').trim();
+  const displayContent = normalizeMathDelimiters(
+    message.content.replace(/```json_board[\s\S]*?```/g, '').trim()
+  );
 
   if (!displayContent) return null;
 

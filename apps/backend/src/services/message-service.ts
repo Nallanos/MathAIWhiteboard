@@ -1,5 +1,5 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, asc, and, isNull } from 'drizzle-orm';
+import { eq, asc, and, isNull, desc } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 
 type Database = NodePgDatabase<typeof schema>;
@@ -15,7 +15,26 @@ export class MessageService {
     this.db = db;
   }
 
-  async getMessages(conversationId: string) {
+  async getMessages(conversationId: string, opts?: { limit?: number }) {
+    const limit = typeof opts?.limit === 'number' ? opts.limit : undefined;
+
+    if (limit && limit > 0) {
+      const rows = await this.db
+        .select()
+        .from(schema.messages)
+        .where(
+          and(
+            eq(schema.messages.conversationId, conversationId),
+            isNull(schema.messages.deletedAt)
+          )
+        )
+        .orderBy(desc(schema.messages.createdAt))
+        .limit(limit);
+
+      // Return chronological order for the UI.
+      return rows.reverse();
+    }
+
     return this.db
       .select()
       .from(schema.messages)
@@ -70,6 +89,7 @@ export class MessageService {
       .where(
         and(
           eq(schema.conversations.boardId, boardId),
+          eq(schema.conversations.userId, userId),
           eq(schema.conversations.status, 'active')
         )
       )
@@ -91,15 +111,57 @@ export class MessageService {
     return created;
   }
 
-  async archiveActiveConversations(boardId: string) {
+  async archiveActiveConversations(boardId: string, userId: string) {
     await this.db
       .update(schema.conversations)
       .set({ status: 'archived' })
       .where(
         and(
           eq(schema.conversations.boardId, boardId),
+          eq(schema.conversations.userId, userId),
           eq(schema.conversations.status, 'active')
         )
       );
+  }
+
+  async listConversations(boardId: string, userId: string) {
+    return this.db
+      .select()
+      .from(schema.conversations)
+      .where(
+        and(
+          eq(schema.conversations.boardId, boardId),
+          eq(schema.conversations.userId, userId)
+        )
+      )
+      .orderBy(desc(schema.conversations.createdAt));
+  }
+
+  async setActiveConversation(boardId: string, userId: string, conversationId: string) {
+    const [existing] = await this.db
+      .select()
+      .from(schema.conversations)
+      .where(
+        and(
+          eq(schema.conversations.id, conversationId),
+          eq(schema.conversations.boardId, boardId),
+          eq(schema.conversations.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (!existing) {
+      return null;
+    }
+
+    await this.archiveActiveConversations(boardId, userId);
+
+    const [updated] = await this.db
+      .update(schema.conversations)
+      .set({ status: 'active' })
+      .where(eq(schema.conversations.id, conversationId))
+      .returning();
+
+    return updated ?? null;
   }
 }

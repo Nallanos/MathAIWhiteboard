@@ -95,7 +95,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   
   const { saveBoard } = useBoardPersistence(api, { boardId, token });
 
-  const { messages, sendPrompt, isBusy, resetConversation, conversationId, tutor, fetchTutorSession, patchTutorState } = useAI(api, {
+  const { messages, sendPrompt, isBusy, resetConversation, conversationId, conversations, activateConversation, tutor, fetchTutorSession, patchTutorState } = useAI(api, {
     boardId,
     autoCapture,
     locale: 'fr',
@@ -432,6 +432,9 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
               isBusy={isBusy}
               theme={theme}
               onNewChat={resetConversation}
+              conversations={conversations}
+              activeConversationId={conversationId}
+              onConversationChange={activateConversation}
               chatMode={chatMode}
               onChatModeChange={handleChatModeChange}
               model={model}

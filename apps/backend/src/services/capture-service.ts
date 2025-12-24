@@ -25,7 +25,8 @@ export class CaptureService {
     await mkdir(this.baseDir, { recursive: true });
     const captureId = randomUUID();
     const createdAt = new Date().toISOString();
-    const imagePath = path.join(this.baseDir, `${captureId}.png`);
+    const imageExt = this.inferImageExtension(payload.image.dataUrl);
+    const imagePath = path.join(this.baseDir, `${captureId}.${imageExt}`);
 
     const buffer = this.decodeBase64(payload.image.dataUrl);
     await writeFile(imagePath, buffer);
@@ -52,6 +53,14 @@ export class CaptureService {
     });
 
     return { id: captureId, createdAt };
+  }
+
+  private inferImageExtension(dataUrl: string): 'png' | 'jpg' | 'webp' {
+    const match = /^data:image\/(png|jpeg|webp);base64,/i.exec(dataUrl);
+    const mime = (match?.[1] ?? 'png').toLowerCase();
+    if (mime === 'jpeg') return 'jpg';
+    if (mime === 'webp') return 'webp';
+    return 'png';
   }
 
   private decodeBase64(dataUrl: string): Buffer {

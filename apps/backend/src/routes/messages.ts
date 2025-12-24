@@ -14,6 +14,10 @@ const editMessageSchema = z.object({
   content: z.string().min(1)
 });
 
+const listMessagesQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(500).optional()
+});
+
 interface Dependencies {
   app: Express;
   messageService: MessageService;
@@ -25,6 +29,37 @@ export function registerMessageRoutes({
   messageService,
   authMiddleware
 }: Dependencies): void {
+  // List conversations for a board (history)
+  app.get('/api/boards/:boardId/conversations', authMiddleware, async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    try {
+      const conversations = await messageService.listConversations(req.params.boardId, userId);
+      res.json({ conversations });
+    } catch (error) {
+      console.error('Failed to list conversations', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Activate a previous conversation for a board
+  app.post('/api/boards/:boardId/conversations/:conversationId/activate', authMiddleware, async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    try {
+      const conversation = await messageService.setActiveConversation(
+        req.params.boardId,
+        userId,
+        req.params.conversationId
+      );
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+      res.json({ conversation });
+    } catch (error) {
+      console.error('Failed to activate conversation', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // Get or create conversation for board
   app.get('/api/boards/:boardId/conversation', authMiddleware, async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).user!.id;
@@ -45,7 +80,7 @@ export function registerMessageRoutes({
     const userId = (req as AuthenticatedRequest).user!.id;
     try {
       // Archive existing active conversations
-      await messageService.archiveActiveConversations(req.params.boardId);
+      await messageService.archiveActiveConversations(req.params.boardId, userId);
       
       // Create new one
       const conversation = await messageService.getOrCreateConversation(
@@ -63,7 +98,9 @@ export function registerMessageRoutes({
   // List messages for a conversation
   app.get('/api/conversations/:id/messages', authMiddleware, async (req: Request, res: Response) => {
     try {
-      const messages = await messageService.getMessages(req.params.id);
+      const parsedQuery = listMessagesQuerySchema.safeParse(req.query);
+      const limit = parsedQuery.success ? parsedQuery.data.limit : undefined;
+      const messages = await messageService.getMessages(req.params.id, { limit });
       res.json({ messages });
     } catch (error) {
       console.error('Failed to list messages', error);

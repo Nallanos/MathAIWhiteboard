@@ -1,4 +1,9 @@
 import type { ChatMode, TutorPayload } from '@mathboard/shared';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { normalizeMathDelimiters } from './markdown';
 
 interface Props {
   value: string;
@@ -58,6 +63,22 @@ export function InputBox({
 
   const todoItemBase = `flex cursor-pointer items-start gap-2 rounded-xl border p-2`;
 
+  const renderTodoTitle = (title: string) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{
+        p: ({ children, ...props }) => (
+          <span {...props} className="whitespace-pre-line">
+            {children}
+          </span>
+        )
+      }}
+    >
+      {normalizeMathDelimiters(title)}
+    </ReactMarkdown>
+  );
+
   const showTodos = chatMode === 'tutor';
   const steps = tutor?.plan?.steps ?? [];
   const completedSet = new Set(tutor?.state.completedStepIds ?? []);
@@ -103,7 +124,7 @@ export function InputBox({
                     onClick={() => onTutorStepClick?.(firstStep.id)}
                   >
                     <span className="mt-1 inline-block h-4 w-4 rounded border border-current opacity-50" aria-hidden="true" />
-                    <span>{firstStep.title}</span>
+                    <span>{renderTodoTitle(firstStep.title)}</span>
                   </button>
                 );
               })()}
@@ -139,7 +160,7 @@ export function InputBox({
                           onClick={() => onTutorStepClick?.(step.id)}
                         >
                           <span className="mt-1 inline-block h-4 w-4 rounded border border-current opacity-50" aria-hidden="true" />
-                          <span>{step.title}</span>
+                          <span>{renderTodoTitle(step.title)}</span>
                         </button>
                       );
                     })}

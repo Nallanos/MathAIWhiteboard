@@ -78,4 +78,10 @@ export interface AIAnalyzeResponse {
   captureId?: string | null;
   tutor?: TutorPayload;
   aiCreditsRemaining?: number;
+  finishReason?: string;
+  usage?: {
+    promptTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
 }

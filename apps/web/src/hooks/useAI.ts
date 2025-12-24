@@ -22,10 +22,32 @@ export function useAI(
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [isBusy, setBusy] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [tutor, setTutor] = useState<TutorPayload | null>(null);
   const timerRef = useRef<number | null>(null);
   const lastUploadedVersionRef = useRef<number>(-1);
   const lastCaptureIdRef = useRef<string | null>(null);
+
+  const MAX_MESSAGES_IN_MEMORY = 200;
+
+  const capMessages = useCallback((next: AIMessage[]) => {
+    if (next.length <= MAX_MESSAGES_IN_MEMORY) return next;
+    return next.slice(next.length - MAX_MESSAGES_IN_MEMORY);
+  }, []);
+
+  const reloadConversations = useCallback(async () => {
+    if (!options.boardId || !options.token) return;
+    try {
+      const res = await apiFetch(`/api/boards/${options.boardId}/conversations`, { token: options.token });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data?.conversations)) {
+        setConversations(data.conversations);
+      }
+    } catch (err) {
+      console.error('Failed to load conversations', err);
+    }
+  }, [options.boardId, options.token]);
 
   // Fetch conversation ID
   useEffect(() => {
@@ -41,6 +63,11 @@ export function useAI(
       .catch((err) => console.error('Failed to get conversation', err));
   }, [options.boardId, options.token]);
 
+  // Fetch conversation list (history)
+  useEffect(() => {
+    reloadConversations();
+  }, [reloadConversations]);
+
   // Reset tutor state when conversation changes
   useEffect(() => {
     setTutor(null);
@@ -50,15 +77,39 @@ export function useAI(
   useEffect(() => {
     if (!conversationId || !options.token) return;
     
-    apiFetch(`/api/conversations/${conversationId}/messages`, { token: options.token })
+    apiFetch(`/api/conversations/${conversationId}/messages?limit=${MAX_MESSAGES_IN_MEMORY}`, { token: options.token })
       .then((res) => res.json())
       .then((data) => {
         if (data.messages) {
-          setMessages(data.messages);
+          setMessages(capMessages(data.messages));
         }
       })
       .catch((err) => console.error('Failed to load history', err));
-  }, [conversationId, options.token]);
+  }, [conversationId, options.token, capMessages]);
+
+  const activateConversation = useCallback(async (nextConversationId: string) => {
+    if (!options.boardId || !options.token) return;
+    if (!nextConversationId) return;
+
+    try {
+      setMessages([]);
+      setTutor(null);
+      const res = await apiFetch(`/api/boards/${options.boardId}/conversations/${nextConversationId}/activate`, {
+        method: 'POST',
+        token: options.token
+      });
+      if (!res.ok) throw new Error('Failed to activate conversation');
+      const data = await res.json();
+      if (data.conversation?.id) {
+        setConversationId(data.conversation.id);
+      } else {
+        setConversationId(nextConversationId);
+      }
+      await reloadConversations();
+    } catch (err) {
+      console.error('Failed to activate conversation', err);
+    }
+  }, [options.boardId, options.token, reloadConversations]);
 
   const MIN_VERSION_DELTA_FOR_CAPTURE = 5; // avoid re-uploading on tiny tweaks
 
@@ -103,8 +154,19 @@ export function useAI(
 
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Capture failed: ${errorText}`);
+      let details = '';
+      try {
+        const json = await response.json();
+        details = typeof json?.error === 'string' ? json.error : JSON.stringify(json);
+      } catch {
+        try {
+          details = await response.text();
+        } catch {
+          details = '';
+        }
+      }
+      const prefix = response.status === 413 ? 'Capture trop lourde' : 'Capture échouée';
+      throw new Error(details ? `${prefix}: ${details}` : prefix);
     }
 
     const body = await response.json();
@@ -134,11 +196,12 @@ export function useAI(
         setConversationId(data.conversation.id);
         setMessages([]);
         setTutor(null);
+        await reloadConversations();
       }
     } catch (err) {
       console.error('Failed to reset conversation', err);
     }
-  }, [options.boardId, options.token]);
+  }, [options.boardId, options.token, reloadConversations]);
 
   const fetchTutorSession = useCallback(async () => {
     if (!conversationId || !options.token) return null;
@@ -183,11 +246,13 @@ export function useAI(
       if (!prompt || !conversationId) return;
       setBusy(true);
       let captureId: string | null = null;
+      let captureError: string | null = null;
       try {
         // Tutor mode is step-by-step: always send a fresh board snapshot.
         captureId = await uploadCapture({ force: chatMode === 'tutor' });
       } catch (error) {
         console.error(error);
+        captureError = error instanceof Error ? error.message : 'Capture failed';
       }
 
       if (!captureId) {
@@ -198,7 +263,7 @@ export function useAI(
             boardId: options.boardId,
             role: 'assistant',
             content:
-              "Impossible de capturer le tableau. Réessaie.",
+              captureError ? `Impossible de capturer le tableau. (${captureError})` : "Impossible de capturer le tableau. Réessaie.",
             createdAt: new Date().toISOString()
           }
         ]);
@@ -222,7 +287,7 @@ export function useAI(
       // Optimistic update
       const tempId = crypto.randomUUID();
       setMessages((prev) => [
-        ...prev,
+        ...capMessages(prev),
         {
           id: tempId,
           boardId: options.boardId,
@@ -311,7 +376,7 @@ export function useAI(
         });
 
         setMessages((prev) => [
-          ...prev,
+          ...capMessages(prev),
           {
             id: crypto.randomUUID(),
             boardId: options.boardId,
@@ -330,7 +395,7 @@ export function useAI(
             : 'AI error: request failed';
 
         setMessages((prev) => [
-          ...prev,
+          ...capMessages(prev),
           {
             id: crypto.randomUUID(),
             boardId: options.boardId,
@@ -343,7 +408,7 @@ export function useAI(
         setBusy(false);
       }
     },
-    [setAiCredits, uploadCapture, options]
+    [setAiCredits, uploadCapture, options, capMessages]
   );
 
   useEffect(() => {
@@ -354,5 +419,5 @@ export function useAI(
     };
   }, []);
 
-  return { messages, sendPrompt, isBusy, resetConversation, conversationId, tutor, fetchTutorSession, patchTutorState };
+  return { messages, sendPrompt, isBusy, resetConversation, conversationId, conversations, activateConversation, tutor, fetchTutorSession, patchTutorState };
 }

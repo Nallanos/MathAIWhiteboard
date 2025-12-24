@@ -10,6 +10,9 @@ interface Props {
   isBusy: boolean;
   theme: 'light' | 'dark';
   onNewChat: () => void;
+  conversations?: Array<{ id: string; status: string; createdAt: string }>;
+  activeConversationId?: string | null;
+  onConversationChange?: (conversationId: string) => void;
   chatMode: ChatMode;
   onChatModeChange: (mode: ChatMode) => void;
   model: string;
@@ -27,6 +30,9 @@ export function AISidebar({
   isBusy,
   theme,
   onNewChat,
+  conversations = [],
+  activeConversationId = null,
+  onConversationChange,
   chatMode,
   onChatModeChange,
   model,
@@ -67,6 +73,20 @@ export function AISidebar({
     isDark ? 'text-slate-400' : 'text-slate-500'
   }`;
 
+  const selectClass = `h-8 max-w-[160px] rounded-lg border px-2 text-xs font-semibold focus:outline-none ${
+    isDark
+      ? 'border-slate-700 bg-slate-950/40 text-slate-200 focus:border-slate-500'
+      : 'border-slate-200 bg-slate-50 text-slate-700 focus:border-slate-400'
+  }`;
+
+  const formatConversationLabel = (c: { createdAt: string; status: string }, index: number) => {
+    const dt = new Date(c.createdAt);
+    const when = Number.isFinite(dt.getTime())
+      ? new Intl.DateTimeFormat(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(dt)
+      : `Chat ${index + 1}`;
+    return c.status === 'active' ? `${when} (actif)` : when;
+  };
+
   const handleSubmit = async () => {
     if (!currentPrompt.trim()) {
       return;
@@ -93,6 +113,24 @@ export function AISidebar({
           <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
             {copy.appName}
           </p>
+
+          {conversations.length > 1 && (
+            <select
+              className={selectClass}
+              value={activeConversationId ?? conversations[0]?.id}
+              onChange={(e) => onConversationChange?.(e.target.value)}
+              disabled={isBusy}
+              aria-label="Historique"
+              title="Historique"
+            >
+              {conversations.map((c, idx) => (
+                <option key={c.id} value={c.id}>
+                  {formatConversationLabel(c, idx)}
+                </option>
+              ))}
+            </select>
+          )}
+
           <button
             onClick={onNewChat}
             className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${isDark ? 'text-slate-300' : 'text-slate-600'}`}

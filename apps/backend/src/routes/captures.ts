@@ -4,7 +4,7 @@ import type { CreateCapturePayload } from '@mathboard/shared';
 import type { EnvConfig } from '../lib/env.js';
 import { CaptureService } from '../services/capture-service.js';
 
-const dataUrlRegex = /^data:image\/png;base64,/i;
+const dataUrlRegex = /^data:image\/(png|jpeg|webp);base64,/i;
 
 const sceneSchema = z.object({
   elements: z.array(z.unknown()),

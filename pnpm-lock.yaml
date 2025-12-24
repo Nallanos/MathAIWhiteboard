@@ -53,6 +53,9 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.2
+      katex:
+        specifier: ^0.16.25
+        version: 0.16.25
       openai:
         specifier: ^6.9.1
         version: 6.9.1(zod@3.25.76)

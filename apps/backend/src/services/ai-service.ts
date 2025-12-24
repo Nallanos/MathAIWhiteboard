@@ -4,6 +4,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { and, eq, asc, desc, gt, gte } from 'drizzle-orm';
 import type { AIPromptPayload, TutorPlan as SharedTutorPlan, TutorState as SharedTutorState, TutorPayload as SharedTutorPayload } from '@mathboard/shared';
 import { GoogleGenerativeAI, type GenerativeModel, type Part, type Content } from '@google/generative-ai';
+import katex from 'katex';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import * as schema from '../db/schema.js';
@@ -17,6 +18,218 @@ const DEFAULT_VISION_MODEL = 'gemini-2.0-flash';
 const PREMIUM_GOOGLE_MODEL = 'gemini-3-flash-preview';
 const GOOGLE_ALLOWED_MODELS = new Set([DEFAULT_VISION_MODEL, PREMIUM_GOOGLE_MODEL, 'gemini-3-flash']);
 const DEFAULT_DAILY_CREDITS = 25;
+
+const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const GEMINI_3_MAX_OUTPUT_TOKENS = 2048;
+
+function resolveGeminiMaxOutputTokens(modelId: string | undefined): number {
+  const model = (modelId || '').toLowerCase();
+  if (model.startsWith('gemini-3')) return GEMINI_3_MAX_OUTPUT_TOKENS;
+  return DEFAULT_MAX_OUTPUT_TOKENS;
+}
+
+type GeminiUsage = { promptTokens?: number; outputTokens?: number; totalTokens?: number };
+type GeminiTextResult = { text: string; finishReason?: string; usage?: GeminiUsage };
+
+function extractGeminiFinishReason(response: any): string | undefined {
+  const reason = response?.candidates?.[0]?.finishReason;
+  if (typeof reason === 'string') return reason;
+  if (reason && typeof reason === 'object' && typeof reason?.name === 'string') return reason.name;
+  return undefined;
+}
+
+function extractGeminiUsage(response: any): GeminiUsage | undefined {
+  const usage = response?.usageMetadata;
+  if (!usage || typeof usage !== 'object') return undefined;
+  const promptTokens = typeof usage.promptTokenCount === 'number' ? usage.promptTokenCount : undefined;
+  const outputTokens = typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : undefined;
+  const totalTokens = typeof usage.totalTokenCount === 'number' ? usage.totalTokenCount : undefined;
+  if (promptTokens === undefined && outputTokens === undefined && totalTokens === undefined) return undefined;
+  return { promptTokens, outputTokens, totalTokens };
+}
+
+function addUsage(a?: GeminiUsage, b?: GeminiUsage): GeminiUsage | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const promptTokens = (a.promptTokens ?? 0) + (b.promptTokens ?? 0);
+  const outputTokens = (a.outputTokens ?? 0) + (b.outputTokens ?? 0);
+  const totalTokens = (a.totalTokens ?? 0) + (b.totalTokens ?? 0);
+  return {
+    promptTokens: promptTokens || undefined,
+    outputTokens: outputTokens || undefined,
+    totalTokens: totalTokens || undefined
+  };
+}
+
+function shouldContinueGemini(finishReason?: string): boolean {
+  const r = (finishReason || '').toUpperCase();
+  return r === 'MAX_TOKENS' || r.includes('MAX_TOKENS') || r.includes('MAX');
+}
+
+function mergeContinuation(prev: string, next: string): string {
+  const a = prev;
+  const b = next.trimStart();
+  if (!b) return a;
+
+  const maxOverlap = Math.min(400, a.length, b.length);
+  for (let len = maxOverlap; len >= 20; len--) {
+    const suffix = a.slice(a.length - len);
+    const prefix = b.slice(0, len);
+    if (suffix === prefix) {
+      return a + b.slice(len);
+    }
+  }
+
+  const sep = a.endsWith('\n') ? '' : '\n';
+  return a + sep + b;
+}
+
+function isLikelyTruncatedJson(text: string): boolean {
+  const t = (text || '').trim();
+  if (!t) return false;
+
+  // Cheap heuristics: if braces/brackets don't match or it doesn't end with a closing brace.
+  // This is not a full JSON parser, but good enough to decide whether to ask Gemini to continue.
+  const openCurly = (t.match(/\{/g) || []).length;
+  const closeCurly = (t.match(/\}/g) || []).length;
+  const openSquare = (t.match(/\[/g) || []).length;
+  const closeSquare = (t.match(/\]/g) || []).length;
+
+  if (openCurly > closeCurly) return true;
+  if (openSquare > closeSquare) return true;
+  if (openCurly > 0 && !t.endsWith('}')) return true;
+  return false;
+}
+
+type LatexSegment = {
+  displayMode: boolean;
+  content: string;
+  raw: string;
+  start: number;
+  end: number;
+};
+
+function findFencedCodeBlockRanges(input: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const re = /```[\s\S]*?```/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(input)) !== null) {
+    ranges.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return ranges;
+}
+
+function isInRanges(pos: number, ranges: Array<{ start: number; end: number }>): boolean {
+  for (const r of ranges) {
+    if (pos >= r.start && pos < r.end) return true;
+  }
+  return false;
+}
+
+function extractLatexSegments(input: string): { segments: LatexSegment[]; hasUnclosed: boolean } {
+  const text = input ?? '';
+  const codeRanges = findFencedCodeBlockRanges(text);
+  const segments: LatexSegment[] = [];
+  let hasUnclosed = false;
+
+  const isEscaped = (idx: number) => idx > 0 && text[idx - 1] === '\\';
+
+  let i = 0;
+  while (i < text.length) {
+    if (isInRanges(i, codeRanges)) {
+      const r = codeRanges.find((rr) => i >= rr.start && i < rr.end);
+      i = r ? r.end : i + 1;
+      continue;
+    }
+
+    if (text[i] !== '$' || isEscaped(i)) {
+      i++;
+      continue;
+    }
+
+    const isDisplay = text[i + 1] === '$' && !isEscaped(i + 1);
+    const openLen = isDisplay ? 2 : 1;
+    const openStart = i;
+    const contentStart = i + openLen;
+
+    let j = contentStart;
+    let found = false;
+    while (j < text.length) {
+      if (isInRanges(j, codeRanges)) {
+        const r = codeRanges.find((rr) => j >= rr.start && j < rr.end);
+        j = r ? r.end : j + 1;
+        continue;
+      }
+
+      if (text[j] !== '$' || isEscaped(j)) {
+        j++;
+        continue;
+      }
+
+      if (isDisplay) {
+        if (text[j + 1] === '$' && !isEscaped(j + 1)) {
+          const content = text.slice(contentStart, j);
+          const raw = text.slice(openStart, j + 2);
+          segments.push({ displayMode: true, content, raw, start: openStart, end: j + 2 });
+          i = j + 2;
+          found = true;
+          break;
+        }
+        j++;
+        continue;
+      }
+
+      // inline: $...$ but avoid $$
+      if (text[j + 1] === '$' && !isEscaped(j + 1)) {
+        // it's $$, not an inline closer
+        j += 2;
+        continue;
+      }
+
+      const content = text.slice(contentStart, j);
+      const raw = text.slice(openStart, j + 1);
+      segments.push({ displayMode: false, content, raw, start: openStart, end: j + 1 });
+      i = j + 1;
+      found = true;
+      break;
+    }
+
+    if (!found) {
+      hasUnclosed = true;
+      break;
+    }
+  }
+
+  return { segments, hasUnclosed };
+}
+
+function validateLatexWithKatex(input: string): { ok: boolean; errors: Array<{ raw: string; error: string }> } {
+  const { segments, hasUnclosed } = extractLatexSegments(input);
+  const errors: Array<{ raw: string; error: string }> = [];
+
+  if (hasUnclosed) {
+    errors.push({ raw: '$…', error: 'Unclosed $ or $$ delimiter' });
+  }
+
+  // Validate up to a reasonable number of segments to avoid worst-case latency.
+  for (const seg of segments.slice(0, 30)) {
+    const content = (seg.content ?? '').trim();
+    if (!content) continue;
+    try {
+      katex.renderToString(content, {
+        throwOnError: true,
+        displayMode: seg.displayMode,
+        strict: 'error'
+      });
+    } catch (e: any) {
+      const msg = typeof e?.message === 'string' ? e.message : 'KaTeX render error';
+      errors.push({ raw: seg.raw.slice(0, 400), error: msg });
+      if (errors.length >= 6) break;
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
 
 export class ModelUnavailableError extends Error {
   constructor(message = 'Ce modèle n\'est pas disponible pour cette clé API.') {
@@ -59,6 +272,12 @@ export interface AiAnalysisResult {
   captureId?: string | null;
   tutor?: SharedTutorPayload;
   aiCreditsRemaining?: number;
+  finishReason?: string;
+  usage?: {
+    promptTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
 }
 
 interface TutoringSessionRecord {
@@ -149,27 +368,49 @@ export class AiService {
 
     try {
       if (chatMode === 'tutor') {
-        const result = await this.analyzeTutor(payload, userId, capture, model, history);
-        return {
-          status: 'completed',
-          message: result.message,
-          provider: 'google',
-          model,
-          strategy: wantsVision ? 'vision' : 'text',
-          captureId: payload.captureId,
-          tutor: result.tutor,
-          aiCreditsRemaining
-        };
+        try {
+          const result = await this.analyzeTutor(payload, userId, capture, model, history);
+          return {
+            status: 'completed',
+            message: result.message,
+            provider: 'google',
+            model,
+            strategy: wantsVision ? 'vision' : 'text',
+            captureId: payload.captureId,
+            tutor: result.tutor,
+            aiCreditsRemaining
+          };
+        } catch (err) {
+          // Tutor mode relies on strict JSON for the plan; Gemini can sometimes return truncated JSON.
+          // Don't fail the whole request with a 502: return a user-facing message instead.
+          console.error('Tutor analysis failed:', err);
+          return {
+            status: 'completed',
+            message:
+              "Le mode tuteur a eu un souci pour générer le plan (JSON incomplet). Réessaie, ou reformule plus court. Si ça persiste, passe en mode tableau.",
+            provider: 'google',
+            model,
+            strategy: wantsVision ? 'vision' : 'text',
+            captureId: payload.captureId,
+            tutor: undefined,
+            aiCreditsRemaining
+          };
+        }
       }
 
       let message = '';
+      let finishReason: string | undefined;
+      let usage: GeminiUsage | undefined;
       if (provider === 'openai' && this.openai) {
         message = await this.generateWithOpenAI(payload, chatMode, capture, history, model);
       } else if (provider === 'anthropic' && this.anthropic) {
         message = await this.generateWithAnthropic(payload, chatMode, capture, history, model);
       } else {
         // Default to Gemini
-        message = await this.generateWithGemini(payload, chatMode, capture, history, model);
+        const gemini = await this.generateWithGemini(payload, chatMode, capture, history, model);
+        message = gemini.text;
+        finishReason = gemini.finishReason;
+        usage = gemini.usage;
       }
 
       return {
@@ -179,7 +420,9 @@ export class AiService {
         model,
         strategy: wantsVision ? 'vision' : 'text',
         captureId: payload.captureId,
-        aiCreditsRemaining
+        aiCreditsRemaining,
+        finishReason,
+        usage
       };
     } catch (error) {
       if (reservedCredit) {
@@ -352,6 +595,13 @@ export class AiService {
     return capture ?? null;
   }
 
+  private inferImageMimeTypeFromPath(imagePath: string): string {
+    const ext = path.extname(imagePath).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    if (ext === '.webp') return 'image/webp';
+    return 'image/png';
+  }
+
   private async getOrCreateTutoringSession(
     conversationId: string,
     userId: string,
@@ -479,11 +729,14 @@ export class AiService {
     capture: CaptureRecord | null,
     model: string
   ): Promise<SharedTutorPlan> {
+    // Plans are short, but JSON mode can still be truncated; allow a slightly larger budget.
+    const baseMaxOutputTokens = resolveGeminiMaxOutputTokens(model);
+    const maxOutputTokens = Math.max(baseMaxOutputTokens, model?.toLowerCase?.().startsWith('gemini-3') ? 3072 : baseMaxOutputTokens);
     const geminiModel = this.genAI.getGenerativeModel({
       model: model || DEFAULT_VISION_MODEL,
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 1024,
+        maxOutputTokens,
         topP: 0.9,
         // Some SDK versions support this; if ignored it's fine.
         // @ts-ignore
@@ -497,7 +750,7 @@ export class AiService {
       parts.push({
         inlineData: {
           data: base64Image,
-          mimeType: 'image/png'
+          mimeType: this.inferImageMimeTypeFromPath(capture.imageUrl)
         }
       });
     }
@@ -533,27 +786,92 @@ export class AiService {
 
     parts.push({ text: instruction });
 
-    const result = await geminiModel.generateContent({
+    const baseContents: Content[] = [
+      {
+        role: 'user',
+        parts
+      }
+    ];
+
+    const parsePlan = (candidateText: string): SharedTutorPlan => {
+      const raw = this.extractJsonObject(candidateText);
+      const parsed = JSON.parse(raw);
+      const validated = safeParseTutorPlan(parsed);
+      if (!validated.ok) throw new Error(`Tutor plan JSON invalid: ${validated.error}`);
+      return validated.plan as unknown as SharedTutorPlan;
+    };
+
+    const result = await geminiModel.generateContent({ contents: baseContents });
+    const responseAny: any = result.response as any;
+    let text: string = (responseAny?.text?.()?.trim?.() ?? result.response.text()?.trim() ?? '').trim();
+    if (!text) throw new Error('Empty plan response');
+
+    let finishReason = extractGeminiFinishReason(responseAny);
+
+    try {
+      return parsePlan(text);
+    } catch (e) {
+      // If the JSON looks truncated, attempt a continuation.
+    }
+
+    const MAX_JSON_CONTINUATIONS = 2;
+    for (let i = 0; i < MAX_JSON_CONTINUATIONS && (shouldContinueGemini(finishReason) || isLikelyTruncatedJson(text)); i++) {
+      const continuationContents: Content[] = [
+        ...baseContents,
+        { role: 'model', parts: [{ text }] },
+        {
+          role: 'user',
+          parts: [
+            {
+              text:
+                "Continue exactement où tu t'es arrêté et termine le JSON. Important: retourne UNIQUEMENT du JSON valide (aucun markdown, aucune explication, pas de ```). Ne répète pas le début."
+            }
+          ]
+        }
+      ];
+
+      const cont = await geminiModel.generateContent({ contents: continuationContents });
+      const contAny: any = cont.response as any;
+      const contText: string = (contAny?.text?.()?.trim?.() ?? cont.response.text()?.trim() ?? '').trim();
+      if (!contText) break;
+
+      text = mergeContinuation(text, contText);
+      finishReason = extractGeminiFinishReason(contAny);
+
+      try {
+        return parsePlan(text);
+      } catch (e) {
+        // keep looping
+      }
+    }
+
+    // Final fallback: one full retry with stricter instruction.
+    const retryInstruction = instruction +
+      "\n\nRAPPEL CRITIQUE: Tu dois retourner un JSON PARSEABLE. Aucun texte hors JSON. Vérifie que toutes les accolades/chevrons sont fermées.";
+    const retryParts: Part[] = [];
+    if (capture) {
+      const base64Image = await this.readImageAsBase64(capture.imageUrl);
+      retryParts.push({
+        inlineData: {
+          data: base64Image,
+          mimeType: this.inferImageMimeTypeFromPath(capture.imageUrl)
+        }
+      });
+    }
+    retryParts.push({ text: retryInstruction });
+
+    const retry = await geminiModel.generateContent({
       contents: [
         {
           role: 'user',
-          parts
+          parts: retryParts
         }
       ]
     });
+    const retryText = (retry.response as any)?.text?.()?.trim?.() ?? retry.response.text()?.trim() ?? '';
+    if (!retryText) throw new Error('Empty plan response (retry)');
 
-    const text = result.response.text()?.trim();
-    if (!text) throw new Error('Empty plan response');
-
-    const raw = this.extractJsonObject(text);
-    const parsed = JSON.parse(raw);
-
-    const validated = safeParseTutorPlan(parsed);
-    if (!validated.ok) {
-      throw new Error(`Tutor plan JSON invalid: ${validated.error}`);
-    }
-
-    return validated.plan as unknown as SharedTutorPlan;
+    return parsePlan(String(retryText).trim());
   }
 
   private async generateTutorStepWithGemini(
@@ -566,11 +884,12 @@ export class AiService {
     model: string,
     history: { role: string; content: string }[]
   ): Promise<string> {
+    const maxOutputTokens = resolveGeminiMaxOutputTokens(model);
     const geminiModel = this.genAI.getGenerativeModel({
       model: model || DEFAULT_VISION_MODEL,
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 1024,
+        maxOutputTokens,
         topP: 0.9
       }
     });
@@ -581,7 +900,7 @@ export class AiService {
       parts.push({
         inlineData: {
           data: base64Image,
-          mimeType: 'image/png'
+          mimeType: this.inferImageMimeTypeFromPath(capture.imageUrl)
         }
       });
     }
@@ -635,7 +954,10 @@ export class AiService {
 
     const text = result.response.text()?.trim();
     if (!text) throw new Error('Empty tutor step response');
-    return this.cleanResponse(text);
+
+    let cleaned = this.cleanResponse(text);
+    cleaned = await this.validateAndRepairLatexIfNeeded(cleaned, model);
+    return cleaned;
   }
 
   private async generateWithGemini(
@@ -644,12 +966,13 @@ export class AiService {
     capture: CaptureRecord | null,
     history: { role: string; content: string }[],
     model: string
-  ) {
+  ): Promise<GeminiTextResult> {
+    const maxOutputTokens = resolveGeminiMaxOutputTokens(model);
     const geminiModel = this.genAI.getGenerativeModel({
       model: model || DEFAULT_VISION_MODEL,
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 1024,
+        maxOutputTokens,
         topP: 0.9
       }
     });
@@ -673,7 +996,7 @@ export class AiService {
       currentParts.push({
         inlineData: {
           data: base64Image,
-          mimeType: 'image/png'
+          mimeType: this.inferImageMimeTypeFromPath(capture.imageUrl)
         }
       });
     }
@@ -687,13 +1010,100 @@ export class AiService {
     });
 
     const result = await geminiModel.generateContent({ contents });
+    const responseAny: any = result.response as any;
 
-    const text = result.response.text()?.trim();
-    if (!text) {
-      throw new Error('Empty response from Gemini');
+    let text: string = (responseAny?.text?.()?.trim?.() ?? result.response.text()?.trim() ?? '').trim();
+    if (!text) throw new Error('Empty response from Gemini');
+
+    let finishReason = extractGeminiFinishReason(responseAny);
+    let usage = extractGeminiUsage(responseAny);
+
+    // Auto-continue only when Gemini explicitly stopped due to max tokens.
+    // This prevents cut-in-the-middle responses (markdown bullets, bold, etc.).
+    const MAX_CONTINUATIONS = 1;
+    for (let i = 0; i < MAX_CONTINUATIONS && shouldContinueGemini(finishReason); i++) {
+      const continuationContents: Content[] = [
+        ...contents,
+        { role: 'model', parts: [{ text }] },
+        {
+          role: 'user',
+          parts: [
+            {
+              text:
+                "Continue exactement où tu t'es arrêté. Ne répète pas. Garde le même formatage (Markdown + LaTeX $/$$)."
+            }
+          ]
+        }
+      ];
+
+      const cont = await geminiModel.generateContent({ contents: continuationContents });
+      const contAny: any = cont.response as any;
+      const contText: string = (contAny?.text?.()?.trim?.() ?? cont.response.text()?.trim() ?? '').trim();
+      if (!contText) break;
+
+      text = mergeContinuation(text, contText);
+      finishReason = extractGeminiFinishReason(contAny);
+      usage = addUsage(usage, extractGeminiUsage(contAny));
     }
 
-    return this.cleanResponse(text);
+    let cleaned = this.cleanResponse(text);
+    cleaned = await this.validateAndRepairLatexIfNeeded(cleaned, model);
+    return { text: cleaned, finishReason, usage };
+  }
+
+  private async validateAndRepairLatexIfNeeded(text: string, model: string): Promise<string> {
+    // Only apply to Google/Gemini outputs; OpenAI/Anthropic go through different paths.
+    // Trigger only on strong signals: KaTeX validation failure.
+    const validation = validateLatexWithKatex(text);
+    if (validation.ok) return text;
+
+    // One-shot repair pass. Use the free default model to avoid consuming extra user credits.
+    const repairModelId = DEFAULT_VISION_MODEL;
+    const geminiModel = this.genAI.getGenerativeModel({
+      model: repairModelId,
+      generationConfig: {
+        temperature: 0.0,
+        maxOutputTokens: Math.max(resolveGeminiMaxOutputTokens(repairModelId), 1536),
+        topP: 0.9
+      }
+    });
+
+    const errorList = validation.errors
+      .slice(0, 6)
+      .map((e, idx) => `${idx + 1}) ${e.error}\nFRAGMENT: ${e.raw}`)
+      .join('\n\n');
+
+    const prompt = [
+      'Tu vas corriger UNIQUEMENT des erreurs de syntaxe LaTeX dans le texte suivant.',
+      'Contraintes STRICTES:',
+      "- Ne change pas le contenu mathématique ni le sens des phrases.",
+      "- Ne reformule pas, ne rajoute rien, ne supprime rien sauf si nécessaire pour réparer le LaTeX.",
+      "- Répare les délimiteurs $...$ et $$...$$ (ouvrir/fermer correctement).",
+      "- Répare les environnements \\begin{...} / \\end{...} si nécessaire (appariement).",
+      "- N'ajoute aucun bloc ```.",
+      '',
+      'Erreurs détectées par KaTeX:',
+      errorList || '(aucune précision)',
+      '',
+      'TEXTE ORIGINAL (copie exacte) :',
+      text,
+      '',
+      'Rends UNIQUEMENT le texte corrigé (même contenu, LaTeX corrigé).'
+    ].join('\n');
+
+    const res = await geminiModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    });
+
+    const repaired = (res.response.text()?.trim() ?? '').trim();
+    if (!repaired) return text;
+
+    const cleaned = this.cleanResponse(repaired);
+    const validation2 = validateLatexWithKatex(cleaned);
+    if (!validation2.ok) {
+      console.warn('KaTeX validation still failing after repair pass:', validation2.errors);
+    }
+    return cleaned;
   }
 
   private async generateWithOpenAI(
