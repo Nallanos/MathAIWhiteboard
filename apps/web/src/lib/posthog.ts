@@ -19,8 +19,46 @@ export function initPostHog() {
 
   posthog.init(env.posthogKey, {
     api_host: env.posthogHost || 'https://app.posthog.com',
+    ui_host: env.posthogUiHost,
+    // `defaults` is documented as a string (e.g. '2025-11-30') but the SDK typings
+    // may lag behind; keep it optional and cast to avoid typecheck failures.
+    defaults: env.posthogDefaults as unknown as any,
     capture_pageview: false,
+    opt_out_capturing_by_default: env.posthogOptOutByDefault,
   });
+}
+
+export function optOutPostHog() {
+  if (!env.posthogEnabled) return;
+  if (!env.posthogKey) return;
+
+  try {
+    posthog.opt_out_capturing();
+  } catch {
+    // ignore
+  }
+}
+
+export function optInPostHog() {
+  if (!env.posthogEnabled) return;
+  if (!env.posthogKey) return;
+
+  try {
+    posthog.opt_in_capturing();
+  } catch {
+    // ignore
+  }
+}
+
+export function hasOptedOutPostHog() {
+  if (!env.posthogEnabled) return false;
+  if (!env.posthogKey) return false;
+
+  try {
+    return posthog.has_opted_out_capturing();
+  } catch {
+    return false;
+  }
 }
 
 export function capturePageview(url?: string) {

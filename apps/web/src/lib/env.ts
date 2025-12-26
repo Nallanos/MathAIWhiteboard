@@ -13,4 +13,8 @@ export const env = {
     (import.meta.env.VITE_POSTHOG_ENABLED as string | undefined) === 'true',
   posthogKey: import.meta.env.VITE_POSTHOG_KEY as string | undefined,
   posthogHost: import.meta.env.VITE_POSTHOG_HOST as string | undefined,
+  posthogUiHost: import.meta.env.VITE_POSTHOG_UI_HOST as string | undefined,
+  posthogDefaults: import.meta.env.VITE_POSTHOG_DEFAULTS as string | undefined,
+  posthogOptOutByDefault:
+    (import.meta.env.VITE_POSTHOG_OPT_OUT_BY_DEFAULT as string | undefined) === 'true',
 };
