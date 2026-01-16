@@ -16,6 +16,10 @@ const updateBoardSchema = z.object({
   thumbnailUrl: z.string().optional()
 });
 
+const renameBoardSchema = z.object({
+  title: z.string().trim().min(1).max(200)
+});
+
 interface Dependencies {
   app: Express;
   boardService: BoardService;
@@ -92,6 +96,26 @@ export function registerBoardRoutes({
       res.json({ board });
     } catch (error) {
       console.error('Failed to update board', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Rename board title
+  app.patch('/api/boards/:id', authMiddleware, async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const payload = renameBoardSchema.safeParse(req.body);
+    if (!payload.success) {
+      return res.status(400).json({ errors: payload.error.flatten() });
+    }
+
+    try {
+      const board = await boardService.updateBoardTitle(req.params.id, userId, payload.data.title);
+      if (!board) {
+        return res.status(404).json({ error: 'Board not found' });
+      }
+      res.json({ board });
+    } catch (error) {
+      console.error('Failed to rename board', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

@@ -35,6 +35,9 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   const [autoCapture] = useState(false);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [boardTitle, setBoardTitle] = useState<string>('');
+  const [isRenamingBoard, setIsRenamingBoard] = useState(false);
+  const [boardTitleDraft, setBoardTitleDraft] = useState<string>('');
   const sceneVersionRef = useRef(0);
   const getSceneVersion = useCallback(() => sceneVersionRef.current, []);
   
@@ -110,6 +113,58 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   useEffect(() => {
     refreshMe().catch(() => {});
   }, [refreshMe]);
+
+  useEffect(() => {
+    if (!token || !boardId) return;
+    apiFetch(`/api/boards/${boardId}`, { token })
+      .then((res) => res.json())
+      .then((data) => {
+        const title = String(data?.board?.title ?? '');
+        setBoardTitle(title);
+        if (!isRenamingBoard) {
+          setBoardTitleDraft(title);
+        }
+      })
+      .catch((e) => console.error('Failed to load board title', e));
+  }, [boardId, token, isRenamingBoard]);
+
+  const saveBoardTitle = useCallback(
+    async (nextTitle: string) => {
+      if (!token) return;
+      const trimmed = nextTitle.trim();
+      if (!trimmed || trimmed === boardTitle) {
+        setIsRenamingBoard(false);
+        setBoardTitleDraft(boardTitle);
+        return;
+      }
+
+      const previous = boardTitle;
+      setBoardTitle(trimmed);
+      setIsRenamingBoard(false);
+
+      try {
+        const res = await apiFetch(`/api/boards/${boardId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: trimmed }),
+          token
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to rename board (${res.status})`);
+        }
+        const data = await res.json();
+        const updated = String(data?.board?.title ?? trimmed);
+        setBoardTitle(updated);
+        setBoardTitleDraft(updated);
+      } catch (e) {
+        console.error('Failed to rename board', e);
+        setBoardTitle(previous);
+        setBoardTitleDraft(previous);
+        alert('Impossible de renommer le board.');
+      }
+    },
+    [token, boardId, boardTitle]
+  );
 
   useEffect(() => {
     if (!conversationId) {
@@ -395,10 +450,44 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
           </div>
         )}
         <CollaborationStatus boardId={boardId} peerCount={peerCount} />
-        <div className="absolute top-16 left-4 z-10 flex gap-2">
-           <button onClick={handleBack} className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50">
-             ← Back
-           </button>
+        <div className="absolute top-16 left-4 z-10 flex items-center gap-2">
+          <button onClick={handleBack} className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50">
+            ← Back
+          </button>
+
+          {isRenamingBoard ? (
+            <input
+              className="bg-white px-3 py-1 rounded shadow text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 w-[280px]"
+              value={boardTitleDraft}
+              autoFocus
+              onChange={(e) => setBoardTitleDraft(e.target.value)}
+              onBlur={() => saveBoardTitle(boardTitleDraft)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  saveBoardTitle(boardTitleDraft);
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setIsRenamingBoard(false);
+                  setBoardTitleDraft(boardTitle);
+                }
+              }}
+              aria-label="Board title"
+            />
+          ) : (
+            <button
+              type="button"
+              className="bg-white px-3 py-1 rounded shadow text-sm hover:bg-gray-50 max-w-[280px] truncate text-left"
+              title="Rename board"
+              onClick={() => {
+                setIsRenamingBoard(true);
+                setBoardTitleDraft(boardTitle || 'Untitled Board');
+              }}
+            >
+              {boardTitle || 'Untitled Board'}
+            </button>
+          )}
         </div>
       </main>
       {/* Mobile floating toggle on the right side */}

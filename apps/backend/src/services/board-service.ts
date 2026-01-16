@@ -1,5 +1,5 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 
 type Database = NodePgDatabase<typeof schema>;
@@ -57,7 +57,19 @@ export class BoardService {
     const [board] = await this.db
       .update(schema.boards)
       .set(updateData)
-      .where(eq(schema.boards.id, id))
+      .where(and(eq(schema.boards.id, id), eq(schema.boards.userId, userId)))
+      .returning();
+    return board;
+  }
+
+  async updateBoardTitle(id: string, userId: string, title: string) {
+    const [board] = await this.db
+      .update(schema.boards)
+      .set({
+        title,
+        updatedAt: new Date()
+      })
+      .where(and(eq(schema.boards.id, id), eq(schema.boards.userId, userId)))
       .returning();
     return board;
   }
@@ -73,7 +85,7 @@ export class BoardService {
   async deleteBoard(id: string, userId: string) {
     const [deleted] = await this.db
       .delete(schema.boards)
-      .where(eq(schema.boards.id, id))
+      .where(and(eq(schema.boards.id, id), eq(schema.boards.userId, userId)))
       .returning();
     return deleted;
   }
