@@ -1,8 +1,70 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { AIMessage, ChatMode, TutorPayload } from '@mathboard/shared';
 import { ChatMessage } from './ChatMessage';
 import { InputBox } from './InputBox';
 import { SIDEBAR_COPY } from './copy';
+
+type MessageFeedProps = {
+  messages: AIMessage[];
+  isBusy: boolean;
+  theme: 'light' | 'dark';
+  assistantLabel: string;
+  userLabel: string;
+  emptyState: string;
+  busyState: string;
+};
+
+const MessageFeed = memo(function MessageFeed({
+  messages,
+  isBusy,
+  theme,
+  assistantLabel,
+  userLabel,
+  emptyState,
+  busyState
+}: MessageFeedProps) {
+  const isDark = theme === 'dark';
+
+  const feedClasses = `flex-1 space-y-3 overflow-y-auto rounded-2xl border p-3 shadow-inner pr-2 ${
+    isDark ? 'border-slate-800 bg-slate-950/40 text-slate-100' : 'border-slate-200 bg-white/90'
+  }`;
+
+  const emptyClasses = `rounded-xl border border-dashed p-4 text-center text-sm ${
+    isDark
+      ? 'border-slate-700 bg-slate-900/40 text-slate-400'
+      : 'border-slate-200 bg-slate-50 text-slate-500'
+  }`;
+
+  const busyTextClasses = `text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`;
+
+  return (
+    <div className={feedClasses}>
+      {!messages.length && !isBusy && <div className={emptyClasses}>{emptyState}</div>}
+
+      {messages.map((message) => (
+        <ChatMessage
+          key={message.id}
+          message={message}
+          assistantLabel={assistantLabel}
+          userLabel={userLabel}
+          theme={theme}
+        />
+      ))}
+
+      {isBusy && <p className={busyTextClasses}>{busyState}</p>}
+    </div>
+  );
+}, (prev, next) => {
+  return (
+    prev.messages === next.messages &&
+    prev.isBusy === next.isBusy &&
+    prev.theme === next.theme &&
+    prev.assistantLabel === next.assistantLabel &&
+    prev.userLabel === next.userLabel &&
+    prev.emptyState === next.emptyState &&
+    prev.busyState === next.busyState
+  );
+});
 
 interface Props {
   messages: AIMessage[];
@@ -59,30 +121,25 @@ export function AISidebar({
       : 'border-slate-200 bg-white/80 text-slate-900'
   }`;
 
-  const feedClasses = `flex-1 space-y-3 overflow-y-auto rounded-2xl border p-3 shadow-inner pr-2 ${
-    isDark ? 'border-slate-800 bg-slate-950/40 text-slate-100' : 'border-slate-200 bg-white/90'
-  }`;
-
-  const emptyClasses = `rounded-xl border border-dashed p-4 text-center text-sm ${
-    isDark
-      ? 'border-slate-700 bg-slate-900/40 text-slate-400'
-      : 'border-slate-200 bg-slate-50 text-slate-500'
-  }`;
-
-  const busyTextClasses = `text-xs font-medium ${
-    isDark ? 'text-slate-400' : 'text-slate-500'
-  }`;
-
   const selectClass = `h-8 max-w-[160px] rounded-lg border px-2 text-xs font-semibold focus:outline-none ${
     isDark
       ? 'border-slate-700 bg-slate-950/40 text-slate-200 focus:border-slate-500'
       : 'border-slate-200 bg-slate-50 text-slate-700 focus:border-slate-400'
   }`;
 
+  const conversationDateFormatter = useMemo(() => {
+    return new Intl.DateTimeFormat(undefined, {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }, []);
+
   const formatConversationLabel = (c: { createdAt: string; status: string }, index: number) => {
     const dt = new Date(c.createdAt);
     const when = Number.isFinite(dt.getTime())
-      ? new Intl.DateTimeFormat(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(dt)
+      ? conversationDateFormatter.format(dt)
       : `Chat ${index + 1}`;
     return c.status === 'active' ? `${when} (actif)` : when;
   };
@@ -142,23 +199,15 @@ export function AISidebar({
           </button>
         </div>
       </div>
-      <div className={feedClasses}>
-        {!messages.length && !isBusy && (
-          <div className={emptyClasses}>{copy.emptyState}</div>
-        )}
-        {messages.map((message) => (
-          <ChatMessage
-            key={message.id}
-            message={message}
-            assistantLabel={copy.assistantLabel}
-            userLabel={copy.userLabel}
-            theme={theme}
-          />
-        ))}
-        {isBusy && (
-          <p className={busyTextClasses}>{copy.busyState}</p>
-        )}
-      </div>
+      <MessageFeed
+        messages={messages}
+        isBusy={isBusy}
+        theme={theme}
+        assistantLabel={copy.assistantLabel}
+        userLabel={copy.userLabel}
+        emptyState={copy.emptyState}
+        busyState={copy.busyState}
+      />
 
       <InputBox
         value={currentPrompt}

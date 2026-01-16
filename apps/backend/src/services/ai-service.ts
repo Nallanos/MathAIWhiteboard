@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { and, eq, asc, desc, gt, gte } from 'drizzle-orm';
-import type { AIPromptPayload, TutorPlan as SharedTutorPlan, TutorState as SharedTutorState, TutorPayload as SharedTutorPayload } from '@mathboard/shared';
-import { GoogleGenerativeAI, type GenerativeModel, type Part, type Content } from '@google/generative-ai';
+import type { AIPromptPayload, TutorPlan as SharedTutorPlan, TutorState as SharedTutorState, TutorPayload as SharedTutorPayload, LatexDiagnostics as SharedLatexDiagnostics } from '@mathboard/shared';
+import { GoogleGenAI, type Content, type Part, type ThinkingConfig } from '@google/genai';
 import katex from 'katex';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
@@ -19,8 +19,26 @@ const PREMIUM_GOOGLE_MODEL = 'gemini-3-flash-preview';
 const GOOGLE_ALLOWED_MODELS = new Set([DEFAULT_VISION_MODEL, PREMIUM_GOOGLE_MODEL, 'gemini-3-flash']);
 const DEFAULT_DAILY_CREDITS = 25;
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
-const GEMINI_3_MAX_OUTPUT_TOKENS = 2048;
+const DEFAULT_MAX_OUTPUT_TOKENS = 1536;
+const GEMINI_3_MAX_OUTPUT_TOKENS = 3072;
+
+function resolveGeminiThinkingConfig(modelId: string | undefined): ThinkingConfig | undefined {
+  const model = (modelId || '').toLowerCase();
+  if (!model.startsWith('gemini-3')) return undefined;
+
+  const rawBudget = Number.parseInt(String(process.env.GEMINI_THINKING_BUDGET ?? ''), 10);
+  const thinkingBudget = Number.isFinite(rawBudget) && rawBudget > 0 ? rawBudget : 1024;
+  const rawLevel = String(process.env.GEMINI_THINKING_LEVEL ?? 'HIGH').toUpperCase();
+  const thinkingLevel = (rawLevel === 'LOW' ? 'LOW' : 'HIGH') as any;
+
+  return {
+    // Keep thinking enabled, but avoid it consuming the entire output budget.
+    thinkingBudget,
+    thinkingLevel,
+    // Do not expose thoughts to the user.
+    includeThoughts: false
+  };
+}
 
 function resolveGeminiMaxOutputTokens(modelId: string | undefined): number {
   const model = (modelId || '').toLowerCase();
@@ -28,8 +46,8 @@ function resolveGeminiMaxOutputTokens(modelId: string | undefined): number {
   return DEFAULT_MAX_OUTPUT_TOKENS;
 }
 
-type GeminiUsage = { promptTokens?: number; outputTokens?: number; totalTokens?: number };
-type GeminiTextResult = { text: string; finishReason?: string; usage?: GeminiUsage };
+type GeminiUsage = { promptTokens?: number; outputTokens?: number; thoughtTokens?: number; totalTokens?: number };
+type GeminiTextResult = { text: string; finishReason?: string; usage?: GeminiUsage; latex?: SharedLatexDiagnostics };
 
 function extractGeminiFinishReason(response: any): string | undefined {
   const reason = response?.candidates?.[0]?.finishReason;
@@ -43,9 +61,16 @@ function extractGeminiUsage(response: any): GeminiUsage | undefined {
   if (!usage || typeof usage !== 'object') return undefined;
   const promptTokens = typeof usage.promptTokenCount === 'number' ? usage.promptTokenCount : undefined;
   const outputTokens = typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : undefined;
+  const thoughtTokens = typeof usage.thoughtsTokenCount === 'number' ? usage.thoughtsTokenCount : undefined;
   const totalTokens = typeof usage.totalTokenCount === 'number' ? usage.totalTokenCount : undefined;
-  if (promptTokens === undefined && outputTokens === undefined && totalTokens === undefined) return undefined;
-  return { promptTokens, outputTokens, totalTokens };
+  if (
+    promptTokens === undefined &&
+    outputTokens === undefined &&
+    thoughtTokens === undefined &&
+    totalTokens === undefined
+  )
+    return undefined;
+  return { promptTokens, outputTokens, thoughtTokens, totalTokens };
 }
 
 function addUsage(a?: GeminiUsage, b?: GeminiUsage): GeminiUsage | undefined {
@@ -53,10 +78,12 @@ function addUsage(a?: GeminiUsage, b?: GeminiUsage): GeminiUsage | undefined {
   if (!b) return a;
   const promptTokens = (a.promptTokens ?? 0) + (b.promptTokens ?? 0);
   const outputTokens = (a.outputTokens ?? 0) + (b.outputTokens ?? 0);
+  const thoughtTokens = (a.thoughtTokens ?? 0) + (b.thoughtTokens ?? 0);
   const totalTokens = (a.totalTokens ?? 0) + (b.totalTokens ?? 0);
   return {
     promptTokens: promptTokens || undefined,
     outputTokens: outputTokens || undefined,
+    thoughtTokens: thoughtTokens || undefined,
     totalTokens: totalTokens || undefined
   };
 }
@@ -108,6 +135,104 @@ type LatexSegment = {
   start: number;
   end: number;
 };
+
+function normalizeMathDelimitersBackend(input: string): string {
+  let text = input ?? '';
+
+  // Convert fenced math/latex blocks to KaTeX-friendly block math.
+  // Gemini sometimes emits ```latex ...``` or ```math ...```.
+  text = text.replace(/```(?:latex|math)\s*([\s\S]*?)```/gi, (_m, inner) => {
+    const body = String(inner ?? '').trim();
+    return body ? `$$\n${body}\n$$` : '';
+  });
+
+  // Convert \[ ... \] to $$ ... $$
+  text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner) => {
+    const body = String(inner ?? '').trim();
+    return body ? `$$\n${body}\n$$` : '';
+  });
+
+  // Convert \( ... \) to $ ... $
+  text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner) => {
+    const body = String(inner ?? '').trim();
+    return body ? `$${body}$` : '';
+  });
+
+  // Wrap standalone LaTeX environments if they appear as plain text on their own line.
+  text = text.replace(
+    /(^|\n)(\\begin\{[^}]+\}[\s\S]*?\\end\{[^}]+\})(?=\n|$)/g,
+    (_m, prefix, env) => `${prefix}$$\n${String(env).trim()}\n$$`
+  );
+
+  return text;
+}
+
+function escapeUnclosedMathDelimiters(input: string): { text: string; changed: boolean } {
+  const text = input ?? '';
+  const codeRanges = findFencedCodeBlockRanges(text);
+  const isEscaped = (idx: number) => idx > 0 && text[idx - 1] === '\\';
+
+  let inInline = false;
+  let inDisplay = false;
+  let lastInlinePos = -1;
+  let lastDisplayPos = -1;
+
+  let i = 0;
+  while (i < text.length) {
+    if (isInRanges(i, codeRanges)) {
+      const r = codeRanges.find((rr) => i >= rr.start && i < rr.end);
+      i = r ? r.end : i + 1;
+      continue;
+    }
+
+    if (text[i] !== '$' || isEscaped(i)) {
+      i++;
+      continue;
+    }
+
+    const isDouble = text[i + 1] === '$' && !isEscaped(i + 1);
+    if (isDouble && !inInline) {
+      if (inDisplay) {
+        inDisplay = false;
+        lastDisplayPos = -1;
+      } else {
+        inDisplay = true;
+        lastDisplayPos = i;
+      }
+      i += 2;
+      continue;
+    }
+
+    if (!inDisplay) {
+      if (inInline) {
+        inInline = false;
+        lastInlinePos = -1;
+      } else {
+        inInline = true;
+        lastInlinePos = i;
+      }
+    }
+    i += 1;
+  }
+
+  if (!inInline && !inDisplay) return { text, changed: false };
+
+  // Safety-first: if a math delimiter is left open, we escape the opening delimiter
+  // so it becomes literal text instead of swallowing the remainder.
+  let out = text;
+  let changed = false;
+
+  if (inDisplay && lastDisplayPos >= 0) {
+    out = out.slice(0, lastDisplayPos) + '\\$\\$' + out.slice(lastDisplayPos + 2);
+    changed = true;
+  }
+  if (inInline && lastInlinePos >= 0) {
+    out = out.slice(0, lastInlinePos) + '\\$' + out.slice(lastInlinePos + 1);
+    changed = true;
+  }
+
+  return { text: out, changed };
+}
 
 function findFencedCodeBlockRanges(input: string): Array<{ start: number; end: number }> {
   const ranges: Array<{ start: number; end: number }> = [];
@@ -203,7 +328,11 @@ function extractLatexSegments(input: string): { segments: LatexSegment[]; hasUnc
   return { segments, hasUnclosed };
 }
 
-function validateLatexWithKatex(input: string): { ok: boolean; errors: Array<{ raw: string; error: string }> } {
+function validateLatexWithKatex(input: string): {
+  ok: boolean;
+  hardFail: boolean;
+  errors: Array<{ raw: string; error: string }>;
+} {
   const { segments, hasUnclosed } = extractLatexSegments(input);
   const errors: Array<{ raw: string; error: string }> = [];
 
@@ -219,7 +348,7 @@ function validateLatexWithKatex(input: string): { ok: boolean; errors: Array<{ r
       katex.renderToString(content, {
         throwOnError: true,
         displayMode: seg.displayMode,
-        strict: 'error'
+        strict: 'warn'
       });
     } catch (e: any) {
       const msg = typeof e?.message === 'string' ? e.message : 'KaTeX render error';
@@ -228,7 +357,7 @@ function validateLatexWithKatex(input: string): { ok: boolean; errors: Array<{ r
     }
   }
 
-  return { ok: errors.length === 0, errors };
+  return { ok: errors.length === 0, hardFail: Boolean(hasUnclosed), errors };
 }
 
 export class ModelUnavailableError extends Error {
@@ -273,9 +402,11 @@ export interface AiAnalysisResult {
   tutor?: SharedTutorPayload;
   aiCreditsRemaining?: number;
   finishReason?: string;
+  latex?: SharedLatexDiagnostics;
   usage?: {
     promptTokens?: number;
     outputTokens?: number;
+    thoughtTokens?: number;
     totalTokens?: number;
   };
 }
@@ -295,7 +426,7 @@ interface TutoringSessionRecord {
 
 export class AiService {
   private readonly db: Database;
-  private readonly genAI: GoogleGenerativeAI;
+  private readonly genAI: GoogleGenAI;
   private readonly openai?: OpenAI;
   private readonly anthropic?: Anthropic;
   private readonly geminiKey: string;
@@ -307,7 +438,7 @@ export class AiService {
   constructor({ db, geminiKey, openaiKey, anthropicKey }: AiServiceDeps) {
     this.db = db;
     this.geminiKey = geminiKey;
-    this.genAI = new GoogleGenerativeAI(geminiKey);
+    this.genAI = new GoogleGenAI({ apiKey: geminiKey });
 
     if (openaiKey) {
       this.openai = new OpenAI({ apiKey: openaiKey });
@@ -378,7 +509,8 @@ export class AiService {
             strategy: wantsVision ? 'vision' : 'text',
             captureId: payload.captureId,
             tutor: result.tutor,
-            aiCreditsRemaining
+            aiCreditsRemaining,
+            latex: result.latex
           };
         } catch (err) {
           // Tutor mode relies on strict JSON for the plan; Gemini can sometimes return truncated JSON.
@@ -401,6 +533,7 @@ export class AiService {
       let message = '';
       let finishReason: string | undefined;
       let usage: GeminiUsage | undefined;
+      let latex: SharedLatexDiagnostics | undefined;
       if (provider === 'openai' && this.openai) {
         message = await this.generateWithOpenAI(payload, chatMode, capture, history, model);
       } else if (provider === 'anthropic' && this.anthropic) {
@@ -411,6 +544,7 @@ export class AiService {
         message = gemini.text;
         finishReason = gemini.finishReason;
         usage = gemini.usage;
+        latex = gemini.latex;
       }
 
       return {
@@ -422,7 +556,8 @@ export class AiService {
         captureId: payload.captureId,
         aiCreditsRemaining,
         finishReason,
-        usage
+        usage,
+        latex
       };
     } catch (error) {
       if (reservedCredit) {
@@ -660,7 +795,7 @@ export class AiService {
     capture: CaptureRecord | null,
     model: string,
     history: { role: string; content: string }[]
-  ): Promise<{ message: string; tutor: SharedTutorPayload }> {
+  ): Promise<{ message: string; tutor: SharedTutorPayload; latex?: SharedLatexDiagnostics }> {
     const session = await this.getOrCreateTutoringSession(payload.conversationId, userId, payload.boardId);
 
     const existingPlan = session.plan ?? null;
@@ -709,11 +844,12 @@ export class AiService {
     }
 
     const currentStep = effectivePlan.steps.find((s) => s.id === currentStepId) ?? effectivePlan.steps[0];
-    const message = await this.generateTutorStepWithGemini(payload, capture, effectivePlan, state, currentStepId, currentStep, model, history);
+    const step = await this.generateTutorStepWithGemini(payload, capture, effectivePlan, state, currentStepId, currentStep, model, history);
 
     return {
-      message,
-      tutor: { plan: effectivePlan, state: { ...state, currentStepId } }
+      message: step.text,
+      tutor: { plan: effectivePlan, state: { ...state, currentStepId } },
+      latex: step.latex
     };
   }
 
@@ -732,17 +868,14 @@ export class AiService {
     // Plans are short, but JSON mode can still be truncated; allow a slightly larger budget.
     const baseMaxOutputTokens = resolveGeminiMaxOutputTokens(model);
     const maxOutputTokens = Math.max(baseMaxOutputTokens, model?.toLowerCase?.().startsWith('gemini-3') ? 3072 : baseMaxOutputTokens);
-    const geminiModel = this.genAI.getGenerativeModel({
-      model: model || DEFAULT_VISION_MODEL,
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens,
-        topP: 0.9,
-        // Some SDK versions support this; if ignored it's fine.
-        // @ts-ignore
-        responseMimeType: 'application/json'
-      }
-    });
+    const config: any = {
+      temperature: 0.2,
+      maxOutputTokens,
+      topP: 0.9,
+      responseMimeType: 'application/json'
+    };
+    const thinkingConfig = resolveGeminiThinkingConfig(model || DEFAULT_VISION_MODEL);
+    if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
     const parts: Part[] = [];
     if (capture) {
@@ -801,12 +934,15 @@ export class AiService {
       return validated.plan as unknown as SharedTutorPlan;
     };
 
-    const result = await geminiModel.generateContent({ contents: baseContents });
-    const responseAny: any = result.response as any;
-    let text: string = (responseAny?.text?.()?.trim?.() ?? result.response.text()?.trim() ?? '').trim();
+    const response = await this.genAI.models.generateContent({
+      model: model || DEFAULT_VISION_MODEL,
+      contents: baseContents,
+      config
+    });
+    let text: string = (response.text ?? '').trim();
     if (!text) throw new Error('Empty plan response');
 
-    let finishReason = extractGeminiFinishReason(responseAny);
+    let finishReason = extractGeminiFinishReason(response);
 
     try {
       return parsePlan(text);
@@ -830,13 +966,16 @@ export class AiService {
         }
       ];
 
-      const cont = await geminiModel.generateContent({ contents: continuationContents });
-      const contAny: any = cont.response as any;
-      const contText: string = (contAny?.text?.()?.trim?.() ?? cont.response.text()?.trim() ?? '').trim();
+      const cont = await this.genAI.models.generateContent({
+        model: model || DEFAULT_VISION_MODEL,
+        contents: continuationContents,
+        config
+      });
+      const contText: string = (cont.text ?? '').trim();
       if (!contText) break;
 
       text = mergeContinuation(text, contText);
-      finishReason = extractGeminiFinishReason(contAny);
+      finishReason = extractGeminiFinishReason(cont);
 
       try {
         return parsePlan(text);
@@ -860,15 +999,17 @@ export class AiService {
     }
     retryParts.push({ text: retryInstruction });
 
-    const retry = await geminiModel.generateContent({
+    const retry = await this.genAI.models.generateContent({
+      model: model || DEFAULT_VISION_MODEL,
       contents: [
         {
           role: 'user',
           parts: retryParts
         }
-      ]
+      ],
+      config
     });
-    const retryText = (retry.response as any)?.text?.()?.trim?.() ?? retry.response.text()?.trim() ?? '';
+    const retryText = (retry.text ?? '').trim();
     if (!retryText) throw new Error('Empty plan response (retry)');
 
     return parsePlan(String(retryText).trim());
@@ -883,16 +1024,15 @@ export class AiService {
     currentStep: SharedTutorPlan['steps'][number],
     model: string,
     history: { role: string; content: string }[]
-  ): Promise<string> {
+  ): Promise<{ text: string; latex: SharedLatexDiagnostics }> {
     const maxOutputTokens = resolveGeminiMaxOutputTokens(model);
-    const geminiModel = this.genAI.getGenerativeModel({
-      model: model || DEFAULT_VISION_MODEL,
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens,
-        topP: 0.9
-      }
-    });
+    const config: any = {
+      temperature: 0.2,
+      maxOutputTokens,
+      topP: 0.9
+    };
+    const thinkingConfig = resolveGeminiThinkingConfig(model || DEFAULT_VISION_MODEL);
+    if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
     const parts: Part[] = [];
     if (capture) {
@@ -943,21 +1083,23 @@ export class AiService {
 
     parts.push({ text: context });
 
-    const result = await geminiModel.generateContent({
+    const result = await this.genAI.models.generateContent({
+      model: model || DEFAULT_VISION_MODEL,
       contents: [
         {
           role: 'user',
           parts
         }
-      ]
+      ],
+      config
     });
 
-    const text = result.response.text()?.trim();
+    const text = (result.text ?? '').trim();
     if (!text) throw new Error('Empty tutor step response');
 
     let cleaned = this.cleanResponse(text);
-    cleaned = await this.validateAndRepairLatexIfNeeded(cleaned, model);
-    return cleaned;
+    const repaired = await this.validateAndRepairLatexIfNeeded(cleaned, model);
+    return repaired;
   }
 
   private async generateWithGemini(
@@ -968,14 +1110,13 @@ export class AiService {
     model: string
   ): Promise<GeminiTextResult> {
     const maxOutputTokens = resolveGeminiMaxOutputTokens(model);
-    const geminiModel = this.genAI.getGenerativeModel({
-      model: model || DEFAULT_VISION_MODEL,
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens,
-        topP: 0.9
-      }
-    });
+    const config: any = {
+      temperature: 0.2,
+      maxOutputTokens,
+      topP: 0.9
+    };
+    const thinkingConfig = resolveGeminiThinkingConfig(model || DEFAULT_VISION_MODEL);
+    if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
     const contents: Content[] = [];
 
@@ -1009,14 +1150,17 @@ export class AiService {
       parts: currentParts
     });
 
-    const result = await geminiModel.generateContent({ contents });
-    const responseAny: any = result.response as any;
+    const result = await this.genAI.models.generateContent({
+      model: model || DEFAULT_VISION_MODEL,
+      contents,
+      config
+    });
 
-    let text: string = (responseAny?.text?.()?.trim?.() ?? result.response.text()?.trim() ?? '').trim();
+    let text: string = (result.text ?? '').trim();
     if (!text) throw new Error('Empty response from Gemini');
 
-    let finishReason = extractGeminiFinishReason(responseAny);
-    let usage = extractGeminiUsage(responseAny);
+    let finishReason = extractGeminiFinishReason(result);
+    let usage = extractGeminiUsage(result);
 
     // Auto-continue only when Gemini explicitly stopped due to max tokens.
     // This prevents cut-in-the-middle responses (markdown bullets, bold, etc.).
@@ -1036,37 +1180,89 @@ export class AiService {
         }
       ];
 
-      const cont = await geminiModel.generateContent({ contents: continuationContents });
-      const contAny: any = cont.response as any;
-      const contText: string = (contAny?.text?.()?.trim?.() ?? cont.response.text()?.trim() ?? '').trim();
+      const cont = await this.genAI.models.generateContent({
+        model: model || DEFAULT_VISION_MODEL,
+        contents: continuationContents,
+        config
+      });
+      const contText: string = (cont.text ?? '').trim();
       if (!contText) break;
 
       text = mergeContinuation(text, contText);
-      finishReason = extractGeminiFinishReason(contAny);
-      usage = addUsage(usage, extractGeminiUsage(contAny));
+      finishReason = extractGeminiFinishReason(cont);
+      usage = addUsage(usage, extractGeminiUsage(cont));
     }
 
     let cleaned = this.cleanResponse(text);
-    cleaned = await this.validateAndRepairLatexIfNeeded(cleaned, model);
-    return { text: cleaned, finishReason, usage };
+    const repaired = await this.validateAndRepairLatexIfNeeded(cleaned, model);
+    return { text: repaired.text, finishReason, usage, latex: repaired.latex };
   }
 
-  private async validateAndRepairLatexIfNeeded(text: string, model: string): Promise<string> {
-    // Only apply to Google/Gemini outputs; OpenAI/Anthropic go through different paths.
-    // Trigger only on strong signals: KaTeX validation failure.
-    const validation = validateLatexWithKatex(text);
-    if (validation.ok) return text;
+  private async validateAndRepairLatexIfNeeded(
+    text: string,
+    model: string
+  ): Promise<{ text: string; latex: SharedLatexDiagnostics }> {
+    const original = text;
 
-    // One-shot repair pass. Use the free default model to avoid consuming extra user credits.
+    // 1) Deterministic normalization (mirrors the frontend) to reduce repair calls.
+    let normalized = normalizeMathDelimitersBackend(original);
+    // Keep existing cleanup too.
+    normalized = this.cleanResponse(normalized);
+
+    // 2) Safe-ish local fix: if a $/$$ delimiter is left open, escape it.
+    const escaped = escapeUnclosedMathDelimiters(normalized);
+    if (escaped.changed) normalized = escaped.text;
+
+    const validation = validateLatexWithKatex(normalized);
+    if (validation.ok) {
+      return {
+        text: normalized,
+        latex: {
+          ok: true,
+          errorCount: 0,
+          hardFail: false,
+          repairedAttempted: false,
+          repairedOk: false
+        }
+      };
+    }
+
+    // Only attempt LLM repair on hard failures (delimiter issues).
+    if (!validation.hardFail) {
+      return {
+        text: normalized,
+        latex: {
+          ok: false,
+          errorCount: validation.errors.length,
+          hardFail: false,
+          repairedAttempted: false,
+          repairedOk: false
+        }
+      };
+    }
+
+    // 3) One-shot repair pass. Use the free default model to avoid consuming extra user credits.
+    // Guardrail: skip repair if input is too large.
+    const MAX_REPAIR_INPUT_CHARS = 8000;
+    if (normalized.length > MAX_REPAIR_INPUT_CHARS) {
+      return {
+        text: normalized,
+        latex: {
+          ok: false,
+          errorCount: validation.errors.length,
+          hardFail: true,
+          repairedAttempted: false,
+          repairedOk: false
+        }
+      };
+    }
+
     const repairModelId = DEFAULT_VISION_MODEL;
-    const geminiModel = this.genAI.getGenerativeModel({
-      model: repairModelId,
-      generationConfig: {
-        temperature: 0.0,
-        maxOutputTokens: Math.max(resolveGeminiMaxOutputTokens(repairModelId), 1536),
-        topP: 0.9
-      }
-    });
+    const repairConfig: any = {
+      temperature: 0.0,
+      maxOutputTokens: Math.max(resolveGeminiMaxOutputTokens(repairModelId), 1536),
+      topP: 0.9
+    };
 
     const errorList = validation.errors
       .slice(0, 6)
@@ -1080,30 +1276,68 @@ export class AiService {
       "- Ne reformule pas, ne rajoute rien, ne supprime rien sauf si nécessaire pour réparer le LaTeX.",
       "- Répare les délimiteurs $...$ et $$...$$ (ouvrir/fermer correctement).",
       "- Répare les environnements \\begin{...} / \\end{...} si nécessaire (appariement).",
-      "- N'ajoute aucun bloc ```.",
+      "- Ne transforme pas les maths en blocs de code et n'ajoute aucun ```.",
       '',
       'Erreurs détectées par KaTeX:',
       errorList || '(aucune précision)',
       '',
       'TEXTE ORIGINAL (copie exacte) :',
-      text,
+      normalized,
       '',
       'Rends UNIQUEMENT le texte corrigé (même contenu, LaTeX corrigé).'
     ].join('\n');
 
-    const res = await geminiModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    const res = await this.genAI.models.generateContent({
+      model: repairModelId,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: repairConfig
     });
 
-    const repaired = (res.response.text()?.trim() ?? '').trim();
-    if (!repaired) return text;
+    const repairedRaw = (res.text ?? '').trim();
+    if (!repairedRaw) {
+      return {
+        text: normalized,
+        latex: {
+          ok: false,
+          errorCount: validation.errors.length,
+          hardFail: true,
+          repairedAttempted: true,
+          repairedOk: false
+        }
+      };
+    }
 
-    const cleaned = this.cleanResponse(repaired);
-    const validation2 = validateLatexWithKatex(cleaned);
+    let repaired = this.cleanResponse(repairedRaw);
+    repaired = normalizeMathDelimitersBackend(repaired);
+    const escaped2 = escapeUnclosedMathDelimiters(repaired);
+    if (escaped2.changed) repaired = escaped2.text;
+
+    const validation2 = validateLatexWithKatex(repaired);
     if (!validation2.ok) {
       console.warn('KaTeX validation still failing after repair pass:', validation2.errors);
+      // Critical rule: never return a repaired text that is still invalid.
+      return {
+        text: normalized,
+        latex: {
+          ok: false,
+          errorCount: validation2.errors.length,
+          hardFail: validation2.hardFail,
+          repairedAttempted: true,
+          repairedOk: false
+        }
+      };
     }
-    return cleaned;
+
+    return {
+      text: repaired,
+      latex: {
+        ok: true,
+        errorCount: 0,
+        hardFail: false,
+        repairedAttempted: true,
+        repairedOk: true
+      }
+    };
   }
 
   private async generateWithOpenAI(
@@ -1239,16 +1473,46 @@ export class AiService {
       ? 'RÈGLE: si une capture est présente, elle est la source de vérité. Si conflit avec l\'historique, ignore l\'historique.'
       : undefined;
 
+    const styleRules = locale === 'en'
+      ? [
+          'Style:',
+          '- Be concise, but include enough detail to understand the why.',
+          '- Prefer short paragraphs over complex nesting (no deep lists).',
+          '- Avoid blockquotes and avoid mixing bullets with quoted instructions.',
+        ].join('\n')
+      : [
+          'Style:',
+          '- Sois concis, mais assez détaillé pour comprendre le pourquoi.',
+          '- Préfère 1–3 petits paragraphes plutôt que des listes imbriquées.',
+          '- Évite les citations (>) et évite de mélanger instructions et exemples.',
+        ].join('\n');
+
+    const latexRules = locale === 'en'
+      ? [
+          'Math formatting (strict):',
+          '- Use ONLY LaTeX with $...$ (inline) and $$...$$ (block).',
+          '- Never wrap math in code blocks, never use ```latex or ```math.',
+          '- Do not use backticks around formulas.',
+          '- Always close $ / $$ delimiters; do not leave unfinished environments.',
+        ].join('\n')
+      : [
+          'FORMATAGE MATH (strict):',
+          '- Utilise UNIQUEMENT LaTeX avec $...$ (inline) et $$...$$ (bloc).',
+          '- N\'entoure jamais les maths avec des blocs de code; n\'utilise jamais ```latex / ```math.',
+          '- Ne mets pas de backticks autour des formules.',
+          '- Ferme toujours les délimiteurs $ / $$; ne laisse pas d\'environnement incomplet.',
+        ].join('\n');
+
     return [
       'Tu es « Le Prof Artificiel », un tuteur de mathématiques.',
       `Réponds en ${language}.`,
       modeLine,
       visionRule,
+      styleRules,
       'Règles:',
-      '- Sois bref et direct.',
       '- Ne fais pas le travail à la place de l\'élève.',
-      '- Si l\'élève demande une vérification: valide ce qui est juste; si faux, explique pourquoi et donne un indice.',
-      'FORMATAGE MATH : LaTeX uniquement ($ ou $$), sans duplication en texte brut.',
+      '- Si l\'élève demande une vérification: valide ce qui est juste; si faux, explique pourquoi (brièvement) et donne un indice.',
+      latexRules,
       boardSummary,
       versionLine
     ].filter(Boolean).join('\n');

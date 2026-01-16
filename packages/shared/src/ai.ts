@@ -69,6 +69,14 @@ export interface AIPromptPayload {
   model?: string;
 }
 
+export interface LatexDiagnostics {
+  ok: boolean;
+  errorCount: number;
+  hardFail: boolean;
+  repairedAttempted: boolean;
+  repairedOk: boolean;
+}
+
 export interface AIAnalyzeResponse {
   status: 'completed';
   message: string;
@@ -79,9 +87,11 @@ export interface AIAnalyzeResponse {
   tutor?: TutorPayload;
   aiCreditsRemaining?: number;
   finishReason?: string;
+  latex?: LatexDiagnostics;
   usage?: {
     promptTokens?: number;
     outputTokens?: number;
+    thoughtTokens?: number;
     totalTokens?: number;
   };
 }
