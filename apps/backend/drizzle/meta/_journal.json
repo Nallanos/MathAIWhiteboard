@@ -57,6 +57,13 @@
       "when": 1766173117360,
       "tag": "0007_daffy_stark_industries",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1768666926316,
+      "tag": "0008_tiny_daily_credits",
+      "breakpoints": true
     }
   ]
 }

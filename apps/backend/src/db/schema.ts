@@ -6,7 +6,7 @@ export const users = pgTable('users', {
   displayName: text('display_name').notNull(),
   email: text('email').unique().notNull(),
   passwordHash: text('password_hash').notNull(),
-  aiCredits: integer('ai_credits').notNull().default(25),
+  aiCredits: integer('ai_credits').notNull().default(5),
   aiCreditsResetAt: timestamp('ai_credits_reset_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),

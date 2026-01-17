@@ -17,7 +17,7 @@ import {
 const DEFAULT_VISION_MODEL = 'gemini-2.0-flash';
 const PREMIUM_GOOGLE_MODEL = 'gemini-3-flash-preview';
 const GOOGLE_ALLOWED_MODELS = new Set([DEFAULT_VISION_MODEL, PREMIUM_GOOGLE_MODEL, 'gemini-3-flash']);
-const DEFAULT_DAILY_CREDITS = 25;
+const DEFAULT_DAILY_CREDITS = 5;
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 1536;
 const GEMINI_3_MAX_OUTPUT_TOKENS = 3072;

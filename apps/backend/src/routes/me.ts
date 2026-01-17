@@ -24,7 +24,7 @@ export function registerMeRoutes({ app, authMiddleware, db }: Dependencies): voi
     await db
       .update(schema.users)
       .set({
-        aiCredits: 25,
+        aiCredits: 5,
         aiCreditsResetAt: now
       })
       .where(and(eq(schema.users.id, userId), sql<boolean>`${schema.users.aiCreditsResetAt} < ${todayUtc}`));
