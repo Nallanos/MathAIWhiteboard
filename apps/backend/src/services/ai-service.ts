@@ -26,15 +26,28 @@ function resolveGeminiThinkingConfig(modelId: string | undefined): ThinkingConfi
   const model = (modelId || '').toLowerCase();
   if (!model.startsWith('gemini-3')) return undefined;
 
-  const rawBudget = Number.parseInt(String(process.env.GEMINI_THINKING_BUDGET ?? ''), 10);
-  const thinkingBudget = Number.isFinite(rawBudget) && rawBudget > 0 ? rawBudget : 1024;
-  const rawLevel = String(process.env.GEMINI_THINKING_LEVEL ?? 'HIGH').toUpperCase();
-  const thinkingLevel = (rawLevel === 'LOW' ? 'LOW' : 'HIGH') as any;
+  // NOTE: Gemini rejects requests that set BOTH thinkingBudget and thinkingLevel.
+  // We support both env vars but only forward one.
+  const rawBudgetEnv = String(process.env.GEMINI_THINKING_BUDGET ?? '').trim();
+  const rawBudget = Number.parseInt(rawBudgetEnv, 10);
+  const hasBudget = rawBudgetEnv.length > 0 && Number.isFinite(rawBudget) && rawBudget > 0;
+
+  const rawLevelEnv = String(process.env.GEMINI_THINKING_LEVEL ?? '').trim();
+  const rawLevel = rawLevelEnv.toUpperCase();
+  const normalizedLevel = (rawLevel === 'LOW' || rawLevel === 'MEDIUM' || rawLevel === 'HIGH' ? rawLevel : 'HIGH') as any;
+  const hasLevel = rawLevelEnv.length > 0;
+
+  if (hasBudget) {
+    return {
+      // Keep thinking enabled, but avoid it consuming the entire output budget.
+      thinkingBudget: rawBudget,
+      // Do not expose thoughts to the user.
+      includeThoughts: false
+    };
+  }
 
   return {
-    // Keep thinking enabled, but avoid it consuming the entire output budget.
-    thinkingBudget,
-    thinkingLevel,
+    thinkingLevel: hasLevel ? normalizedLevel : ('HIGH' as any),
     // Do not expose thoughts to the user.
     includeThoughts: false
   };
