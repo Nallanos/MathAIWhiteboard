@@ -490,28 +490,33 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
           )}
         </div>
       </main>
-      {/* Mobile floating toggle on the right side */}
-      <button
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="md:hidden fixed right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white shadow-lg rounded-full px-3 py-2 text-base hover:bg-blue-700 active:bg-blue-800 z-40"
-        aria-label="Toggle chat sidebar"
-      >
-        {sidebarOpen ? '✕' : '💬'}
-      </button>
-      {/* Sidebar toggle for desktop */}
+      {/* Compact (phone/tablet) floating toggle on the right side */}
+      {isCompact && (
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="fixed right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white shadow-lg rounded-full px-3 py-2 text-base hover:bg-blue-700 active:bg-blue-800 z-50"
+          aria-label="Toggle chat sidebar"
+        >
+          {sidebarOpen ? '✕' : '💬'}
+        </button>
+      )}
+
       {sidebarOpen && (
         <>
           {!isCompact && (
             <div
-              className="hidden md:block w-1 cursor-col-resize hover:bg-blue-500 bg-gray-200 transition-colors z-20"
+              className="w-1 cursor-col-resize hover:bg-blue-500 bg-gray-200 transition-colors z-20"
               onMouseDown={startResizing}
             />
           )}
+
           <div
-            style={{ width: isCompact ? '100%' : sidebarWidth }}
-            className={`right-0 top-0 h-full flex-shrink-0 z-30 md:z-auto ${
-              isCompact ? 'absolute md:relative md:min-w-[320px] bg-white shadow-2xl' : 'md:relative md:min-w-[320px]'
-            }`}
+            style={isCompact ? undefined : { width: sidebarWidth }}
+            className={
+              isCompact
+                ? 'fixed right-0 top-0 h-full w-full bg-white shadow-2xl z-40'
+                : 'relative right-0 top-0 h-full flex-shrink-0 z-30 min-w-[320px]'
+            }
           >
             <AISidebar
               messages={messages}
