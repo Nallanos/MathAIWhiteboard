@@ -50,7 +50,12 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= BREAKPOINT);
   const isResizingRef = useRef(false);
 
-  const startResizing = useCallback(() => {
+  const MIN_SIDEBAR_WIDTH = 320;
+  const MIN_CANVAS_WIDTH = 480;
+
+  const startResizing = useCallback((event?: React.MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
     isResizingRef.current = true;
   }, []);
 
@@ -60,12 +65,23 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
 
   const resize = useCallback(
     (mouseMoveEvent: MouseEvent) => {
-      if (isResizingRef.current) {
-        const newWidth = window.innerWidth - mouseMoveEvent.clientX;
-        if (newWidth > 300 && newWidth < 1200) {
-            setSidebarWidth(newWidth);
-        }
+      if (!isResizingRef.current) return;
+
+      // If we missed the mouseup (released outside the window, focus lost, etc.),
+      // don't stay stuck in resizing mode.
+      if (mouseMoveEvent.buttons === 0) {
+        isResizingRef.current = false;
+        return;
       }
+
+      const maxSidebarWidth = Math.max(
+        MIN_SIDEBAR_WIDTH,
+        Math.min(1200, window.innerWidth - MIN_CANVAS_WIDTH)
+      );
+
+      const rawWidth = window.innerWidth - mouseMoveEvent.clientX;
+      const clampedWidth = Math.min(Math.max(rawWidth, MIN_SIDEBAR_WIDTH), maxSidebarWidth);
+      setSidebarWidth(clampedWidth);
     },
     []
   );
@@ -87,11 +103,13 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
 
     window.addEventListener("mousemove", resize);
     window.addEventListener("mouseup", stopResizing);
+    window.addEventListener('blur', stopResizing);
     window.addEventListener("resize", handleResize);
     handleResize();
     return () => {
       window.removeEventListener("mousemove", resize);
       window.removeEventListener("mouseup", stopResizing);
+      window.removeEventListener('blur', stopResizing);
       window.removeEventListener("resize", handleResize);
     };
   }, [resize, stopResizing]);
@@ -506,7 +524,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
           {!isCompact && (
             <div
               className="w-1 cursor-col-resize hover:bg-blue-500 bg-gray-200 transition-colors z-20"
-              onMouseDown={startResizing}
+              onMouseDown={(e) => startResizing(e)}
             />
           )}
 

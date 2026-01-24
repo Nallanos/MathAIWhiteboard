@@ -904,7 +904,7 @@ export class AiService {
     const instruction = [
       'Tu es un planner de tuteur de maths.',
       'Ta tâche: produire un plan d\'exercice sous forme de JSON STRICT (aucun markdown, aucun texte hors JSON).',
-      'Langue: français.',
+      'Langue: utilise la même langue que l\'élève (déduite de "Énoncé / demande de l\'élève"). Si l\'élève écrit en anglais, écris tout en anglais.',
       'Contraintes:',
       '- 3 à 8 étapes maximum.',
       '- ids stables: step_1, step_2, ...',
@@ -1061,7 +1061,7 @@ export class AiService {
     const sys = [
       'Tu es « Le Prof Artificiel », un tuteur de mathématiques.',
       'Mode PENSER: tu dois suivre un plan (todos) et ne traiter que l\'étape courante.',
-      'Tu réponds en français (niveau lycée).',
+      'Langue: réponds dans la même langue que le dernier message de l\'élève. Si l\'élève écrit en anglais, réponds en anglais.',
       'Règles:',
       '- Donne UNIQUEMENT l\'étape courante: une action courte + un mini indice si besoin.',
       '- Pose EXACTEMENT UNE question de validation à la fin.',
@@ -1468,7 +1468,10 @@ export class AiService {
     capture: CaptureRecord | null,
     boardVersion?: number
   ): string {
-    const language = locale === 'en' ? 'anglais clair' : 'français (niveau lycée)';
+    const defaultLanguage = locale === 'en' ? 'clear English' : 'français (niveau lycée)';
+    const languageRule = locale === 'en'
+      ? 'Language: reply in the same language as the user\'s latest message. If unclear, default to clear English.'
+      : `Langue: réponds dans la même langue que le dernier message de l'élève. Si l'élève écrit en anglais, réponds en anglais. Si ce n'est pas clair, par défaut: ${defaultLanguage}.`;
 
     const versionLine = boardVersion !== undefined
       ? `Version du tableau: ${boardVersion}. Si une image est jointe, elle correspond à cette version.`
@@ -1518,7 +1521,8 @@ export class AiService {
 
     return [
       'Tu es « Le Prof Artificiel », un tuteur de mathématiques.',
-      `Réponds en ${language}.`,
+      languageRule,
+      'Apply the style rules below in the chosen response language.',
       modeLine,
       visionRule,
       styleRules,

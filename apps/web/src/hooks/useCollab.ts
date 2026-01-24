@@ -89,9 +89,17 @@ export function useCollab(
       const localElements = (excalidrawApi.getSceneElements?.() as any[]) ?? [];
       const mergedElements = mergeElements(localElements, (snapshot.elements as any[]) ?? []);
 
+      // Important: snapshots often include only a tiny subset of appState.
+      // Passing that directly would overwrite Excalidraw's internal appState
+      // (including canvas size) and can cause the canvas to appear to disappear.
+      const currentAppState: any = excalidrawApi.getAppState?.() ?? {};
+      const nextAppState: any = snapshot.appState
+        ? { ...currentAppState, ...(snapshot.appState as any) }
+        : currentAppState;
+
       excalidrawApi.updateScene({
         elements: mergedElements as any,
-        appState: snapshot.appState as any,
+        appState: nextAppState,
       });
 
       const files = Object.values(snapshot.files ?? {});
