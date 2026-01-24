@@ -42,16 +42,45 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   const getSceneVersion = useCallback(() => sceneVersionRef.current, []);
   
   const BREAKPOINT = 1100; // px; below this we show a closable overlay sidebar
-  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    // Responsive default: smaller on compact viewports
-    return window.innerWidth < BREAKPOINT ? 0 : 400;
-  });
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= BREAKPOINT);
-  const isResizingRef = useRef(false);
-
   const MIN_SIDEBAR_WIDTH = 320;
   const MIN_CANVAS_WIDTH = 480;
+
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const isCompact = viewportWidth < BREAKPOINT;
+
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    // Responsive default: smaller on compact viewports
+    if (window.innerWidth < BREAKPOINT) return 0;
+
+    try {
+      const stored = window.localStorage.getItem(`sidebarWidth:${boardId}`);
+      const parsed = stored ? Number(stored) : NaN;
+      if (Number.isFinite(parsed)) {
+        const maxSidebarWidth = Math.max(
+          MIN_SIDEBAR_WIDTH,
+          Math.min(1200, window.innerWidth - MIN_CANVAS_WIDTH)
+        );
+        return Math.min(Math.max(parsed, MIN_SIDEBAR_WIDTH), maxSidebarWidth);
+      }
+    } catch {
+      // ignore
+    }
+
+    return 400;
+  });
+
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (window.innerWidth < BREAKPOINT) return false;
+    try {
+      const stored = window.localStorage.getItem(`sidebarOpen:${boardId}`);
+      if (stored === '0') return false;
+      if (stored === '1') return true;
+    } catch {
+      // ignore
+    }
+    return window.innerWidth >= BREAKPOINT;
+  });
+  const isResizingRef = useRef(false);
 
   const startResizing = useCallback((event?: React.MouseEvent) => {
     event?.preventDefault();
@@ -95,9 +124,30 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
         // On small screens, close sidebar by default to maximize canvas
         setSidebarOpen(false);
       } else {
-        // On large screens, keep sidebar visible
-        setSidebarOpen(true);
-        setSidebarWidth((current) => (current === 0 ? 400 : current));
+        // On large screens, restore last known desktop sidebar state.
+        try {
+          const storedOpen = window.localStorage.getItem(`sidebarOpen:${boardId}`);
+          if (storedOpen === '0') {
+            setSidebarOpen(false);
+          } else {
+            setSidebarOpen(true);
+          }
+
+          const storedWidth = window.localStorage.getItem(`sidebarWidth:${boardId}`);
+          const parsedWidth = storedWidth ? Number(storedWidth) : NaN;
+          if (Number.isFinite(parsedWidth)) {
+            const maxSidebarWidth = Math.max(
+              MIN_SIDEBAR_WIDTH,
+              Math.min(1200, window.innerWidth - MIN_CANVAS_WIDTH)
+            );
+            setSidebarWidth(Math.min(Math.max(parsedWidth, MIN_SIDEBAR_WIDTH), maxSidebarWidth));
+          } else {
+            setSidebarWidth((current) => (current === 0 ? 400 : current));
+          }
+        } catch {
+          setSidebarOpen(true);
+          setSidebarWidth((current) => (current === 0 ? 400 : current));
+        }
       }
     };
 
@@ -113,6 +163,35 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
       window.removeEventListener("resize", handleResize);
     };
   }, [resize, stopResizing]);
+
+  useEffect(() => {
+    if (isCompact) return;
+    try {
+      window.localStorage.setItem(`sidebarWidth:${boardId}`, String(sidebarWidth));
+    } catch {
+      // ignore
+    }
+  }, [boardId, sidebarWidth, isCompact]);
+
+  useEffect(() => {
+    if (isCompact) return;
+    try {
+      window.localStorage.setItem(`sidebarOpen:${boardId}`, sidebarOpen ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [boardId, sidebarOpen, isCompact]);
+
+  useEffect(() => {
+    // Excalidraw can occasionally miss layout changes caused by flex width updates.
+    // Nudge it by dispatching a resize event after sidebar size/state changes.
+    if (!api) return;
+    const id = window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+      (api as any)?.refresh?.();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [api, sidebarWidth, sidebarOpen, isCompact]);
   
   const { saveBoard } = useBoardPersistence(api, { boardId, token });
 
@@ -364,8 +443,6 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   const handleBack = () => {
     navigate({ to: '/' });
   };
-
-  const isCompact = viewportWidth < BREAKPOINT;
 
   return (
     <div className="flex h-screen max-h-screen overflow-hidden w-full bg-[#f5f5f7] text-slate-900">
