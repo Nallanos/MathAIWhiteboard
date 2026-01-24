@@ -210,9 +210,9 @@ export function InputBox({
             value={model}
             onChange={(e) => onModelChange(e.target.value)}
           >
-            <option value="gemini-2.0-flash">Gemini 2 Flash (gratuit)</option>
-            <option value="gemini-3-flash-preview" disabled={!premiumAvailable}>
-              {premiumAvailable ? 'Gemini 3 Flash (1 crédit)' : 'Gemini 3 Flash (indispo)'}
+            <option value="gemini-3-flash-preview">Gemini 3 Flash (gratuit)</option>
+            <option value="gemini-3-pro" disabled={!premiumAvailable}>
+              {premiumAvailable ? 'Gemini 3 Pro (1 crédit)' : 'Gemini 3 Pro (indispo)'}
             </option>
           </select>
 

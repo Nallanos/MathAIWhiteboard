@@ -151,8 +151,8 @@ async function bootstrap() {
   } else {
     app.get('/api/ai/models', authMiddleware, async (_req: express.Request, res: express.Response) => {
       return res.status(200).json({
-        freeModel: 'gemini-2.0-flash',
-        premiumModel: 'gemini-3-flash-preview',
+        freeModel: 'gemini-3-flash-preview',
+        premiumModel: 'gemini-3-pro',
         premiumAvailable: false,
       });
     });

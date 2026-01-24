@@ -32,8 +32,8 @@ export function registerAIRoutes({ app, authMiddleware, aiService }: Dependencie
     } catch (error) {
       console.error('Failed to list AI models', error);
       return res.status(200).json({
-        freeModel: 'gemini-2.0-flash',
-        premiumModel: 'gemini-3-flash-preview',
+        freeModel: 'gemini-3-flash-preview',
+        premiumModel: 'gemini-3-pro',
         premiumAvailable: false
       });
     }

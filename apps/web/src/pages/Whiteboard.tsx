@@ -204,7 +204,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   });
 
   const [chatMode, setChatMode] = useState<ChatMode>('board');
-  const [model, setModel] = useState<string>('gemini-2.0-flash');
+  const [model, setModel] = useState<string>('gemini-3-flash-preview');
   const [premiumAvailable, setPremiumAvailable] = useState<boolean>(false);
 
   useEffect(() => {
@@ -284,13 +284,20 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   useEffect(() => {
     const stored = window.localStorage.getItem('aiModel');
     if (stored === 'gemini-2.0-flash') {
-      setModel(stored);
+      // Gemini 2 Flash deprecated -> migrate to free Gemini 3 Flash.
+      setModel('gemini-3-flash-preview');
+      window.localStorage.setItem('aiModel', 'gemini-3-flash-preview');
       return;
     }
     if (stored === 'gemini-3-flash' || stored === 'gemini-3-flash-preview') {
       // Migrate legacy id -> documented preview id.
       setModel('gemini-3-flash-preview');
       window.localStorage.setItem('aiModel', 'gemini-3-flash-preview');
+      return;
+    }
+    if (stored === 'gemini-3-pro' || stored === 'gemini-3-pro-preview') {
+      setModel('gemini-3-pro');
+      window.localStorage.setItem('aiModel', 'gemini-3-pro');
     }
   }, []);
 
@@ -301,23 +308,23 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
       .then((data) => {
         const available = Boolean(data?.premiumAvailable);
         setPremiumAvailable(available);
-        if (!available && model === 'gemini-3-flash-preview') {
-          setModel('gemini-2.0-flash');
-          window.localStorage.setItem('aiModel', 'gemini-2.0-flash');
+        if (!available && model === 'gemini-3-pro') {
+          setModel('gemini-3-flash-preview');
+          window.localStorage.setItem('aiModel', 'gemini-3-flash-preview');
         }
       })
       .catch(() => {
         setPremiumAvailable(false);
-        if (model === 'gemini-3-flash-preview') {
-          setModel('gemini-2.0-flash');
-          window.localStorage.setItem('aiModel', 'gemini-2.0-flash');
+        if (model === 'gemini-3-pro') {
+          setModel('gemini-3-flash-preview');
+          window.localStorage.setItem('aiModel', 'gemini-3-flash-preview');
         }
       });
   }, [token, model]);
 
   const handleModelChange = useCallback((next: string) => {
-    const value = next === 'gemini-3-flash-preview' ? 'gemini-3-flash-preview' : 'gemini-2.0-flash';
-    if (value === 'gemini-3-flash-preview' && !premiumAvailable) {
+    const value = next === 'gemini-3-pro' ? 'gemini-3-pro' : 'gemini-3-flash-preview';
+    if (value === 'gemini-3-pro' && !premiumAvailable) {
       return;
     }
     setModel(value);

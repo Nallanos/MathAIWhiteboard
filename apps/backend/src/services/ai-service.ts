@@ -14,9 +14,17 @@ import {
   safeParseTutorPlan
 } from '../ai/tutor-schemas.js';
 
-const DEFAULT_VISION_MODEL = 'gemini-2.0-flash';
-const PREMIUM_GOOGLE_MODEL = 'gemini-3-flash-preview';
-const GOOGLE_ALLOWED_MODELS = new Set([DEFAULT_VISION_MODEL, PREMIUM_GOOGLE_MODEL, 'gemini-3-flash']);
+const FREE_GOOGLE_MODEL = 'gemini-3-flash-preview';
+const PREMIUM_GOOGLE_MODEL = 'gemini-3-pro';
+const PREMIUM_GOOGLE_MODEL_FALLBACK = 'gemini-3-pro-preview';
+// Keep a few legacy ids as aliases for backward compatibility (old localStorage / clients).
+const GOOGLE_ALLOWED_MODELS = new Set([
+  FREE_GOOGLE_MODEL,
+  PREMIUM_GOOGLE_MODEL,
+  'gemini-3-flash',
+  'gemini-3-pro-preview',
+  'gemini-2.0-flash'
+]);
 const DEFAULT_DAILY_CREDITS = 5;
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 1536;
@@ -484,26 +492,24 @@ export class AiService {
       : [];
 
     const provider = payload.provider || 'google';
-    const model = provider === 'google'
+    let model = provider === 'google'
       ? this.resolveGoogleModel(payload.model)
-      : (payload.model || DEFAULT_VISION_MODEL);
+      : (payload.model || FREE_GOOGLE_MODEL);
 
-    const shouldCharge = provider === 'google' && model === PREMIUM_GOOGLE_MODEL;
+    const shouldCharge = provider === 'google' && this.isPremiumGoogleModel(model);
     let reservedCredit = false;
     let aiCreditsRemaining: number | undefined = undefined;
 
     if (shouldCharge) {
-      const available = await this.isGoogleModelAvailable(model);
-      if (!available) {
-        throw new ModelUnavailableError(
-          `Modèle indisponible: ${model}. Utilise ${DEFAULT_VISION_MODEL} ou vérifie les modèles disponibles pour ta clé Google.`
-        );
-      }
+      // Some keys expose only preview ids (e.g. gemini-3-pro-preview). If so, route
+      // the paid request to the premium model that is actually available.
+      model = await this.resolveAvailablePremiumGoogleModel(model);
+
       await this.ensureCreditsFresh(userId);
       const remaining = await this.tryConsumeCredits(userId, 1);
       if (typeof remaining !== 'number') {
         throw new InsufficientCreditsError(
-          `Crédits insuffisants: ${PREMIUM_GOOGLE_MODEL} coûte 1 crédit. Utilise ${DEFAULT_VISION_MODEL} (gratuit) ou recharge tes crédits.`
+          `Crédits insuffisants: ${PREMIUM_GOOGLE_MODEL} coûte 1 crédit. Utilise ${FREE_GOOGLE_MODEL} (gratuit) ou recharge tes crédits.`
         );
       }
       reservedCredit = true;
@@ -603,21 +609,47 @@ export class AiService {
   }
 
   async getGoogleModelAvailability(): Promise<{ freeModel: string; premiumModel: string; premiumAvailable: boolean }> {
-    const freeModel = DEFAULT_VISION_MODEL;
+    const freeModel = FREE_GOOGLE_MODEL;
     const premiumModel = PREMIUM_GOOGLE_MODEL;
-    const premiumAvailable = await this.isGoogleModelAvailable(premiumModel);
+    const premiumAvailable =
+      (await this.isGoogleModelAvailable(PREMIUM_GOOGLE_MODEL)) ||
+      (await this.isGoogleModelAvailable(PREMIUM_GOOGLE_MODEL_FALLBACK));
     return { freeModel, premiumModel, premiumAvailable };
   }
 
+  private isPremiumGoogleModel(modelId: string): boolean {
+    return modelId === PREMIUM_GOOGLE_MODEL || modelId === PREMIUM_GOOGLE_MODEL_FALLBACK;
+  }
+
+  private async resolveAvailablePremiumGoogleModel(requestedModel: string): Promise<string> {
+    const requested = requestedModel === PREMIUM_GOOGLE_MODEL_FALLBACK ? PREMIUM_GOOGLE_MODEL_FALLBACK : PREMIUM_GOOGLE_MODEL;
+    const primary = requested;
+    const fallback = primary === PREMIUM_GOOGLE_MODEL ? PREMIUM_GOOGLE_MODEL_FALLBACK : PREMIUM_GOOGLE_MODEL;
+
+    const okPrimary = await this.isGoogleModelAvailable(primary);
+    if (okPrimary) return primary;
+
+    const okFallback = await this.isGoogleModelAvailable(fallback);
+    if (okFallback) return fallback;
+
+    throw new ModelUnavailableError(
+      `Modèle indisponible: ${requestedModel}. Utilise ${FREE_GOOGLE_MODEL} ou vérifie les modèles disponibles pour ta clé Google.`
+    );
+  }
+
   private resolveGoogleModel(model?: string): string {
-    if (model === 'gemini-3-flash') return PREMIUM_GOOGLE_MODEL;
+    // Legacy aliases
+    if (model === 'gemini-2.0-flash') return FREE_GOOGLE_MODEL;
+    if (model === 'gemini-3-flash') return FREE_GOOGLE_MODEL;
+    if (model === 'gemini-3-pro-preview') return PREMIUM_GOOGLE_MODEL_FALLBACK;
+
     if (model && GOOGLE_ALLOWED_MODELS.has(model)) return model;
-    return DEFAULT_VISION_MODEL;
+    return FREE_GOOGLE_MODEL;
   }
 
   private async isGoogleModelAvailable(modelId: string): Promise<boolean> {
     // Free model is assumed available; if not, the request will fail anyway.
-    if (modelId === DEFAULT_VISION_MODEL) return true;
+    if (modelId === FREE_GOOGLE_MODEL) return true;
 
     const now = Date.now();
     if (!this.googleModelsCache || this.googleModelsCache.expiresAt <= now) {
@@ -631,7 +663,7 @@ export class AiService {
     const res = await fetch(url);
     if (!res.ok) {
       // Fail closed: if we can't list models, treat premium as unavailable.
-      return { expiresAt: Date.now() + 10 * 60_000, models: new Set([DEFAULT_VISION_MODEL]) };
+      return { expiresAt: Date.now() + 10 * 60_000, models: new Set([FREE_GOOGLE_MODEL]) };
     }
 
     const body = (await res.json()) as any;
@@ -887,7 +919,7 @@ export class AiService {
       topP: 0.9,
       responseMimeType: 'application/json'
     };
-    const thinkingConfig = resolveGeminiThinkingConfig(model || DEFAULT_VISION_MODEL);
+    const thinkingConfig = resolveGeminiThinkingConfig(model || FREE_GOOGLE_MODEL);
     if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
     const parts: Part[] = [];
@@ -948,7 +980,7 @@ export class AiService {
     };
 
     const response = await this.genAI.models.generateContent({
-      model: model || DEFAULT_VISION_MODEL,
+      model: model || FREE_GOOGLE_MODEL,
       contents: baseContents,
       config
     });
@@ -980,7 +1012,7 @@ export class AiService {
       ];
 
       const cont = await this.genAI.models.generateContent({
-        model: model || DEFAULT_VISION_MODEL,
+        model: model || FREE_GOOGLE_MODEL,
         contents: continuationContents,
         config
       });
@@ -1013,7 +1045,7 @@ export class AiService {
     retryParts.push({ text: retryInstruction });
 
     const retry = await this.genAI.models.generateContent({
-      model: model || DEFAULT_VISION_MODEL,
+      model: model || FREE_GOOGLE_MODEL,
       contents: [
         {
           role: 'user',
@@ -1044,7 +1076,7 @@ export class AiService {
       maxOutputTokens,
       topP: 0.9
     };
-    const thinkingConfig = resolveGeminiThinkingConfig(model || DEFAULT_VISION_MODEL);
+    const thinkingConfig = resolveGeminiThinkingConfig(model || FREE_GOOGLE_MODEL);
     if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
     const parts: Part[] = [];
@@ -1097,7 +1129,7 @@ export class AiService {
     parts.push({ text: context });
 
     const result = await this.genAI.models.generateContent({
-      model: model || DEFAULT_VISION_MODEL,
+      model: model || FREE_GOOGLE_MODEL,
       contents: [
         {
           role: 'user',
@@ -1128,7 +1160,7 @@ export class AiService {
       maxOutputTokens,
       topP: 0.9
     };
-    const thinkingConfig = resolveGeminiThinkingConfig(model || DEFAULT_VISION_MODEL);
+    const thinkingConfig = resolveGeminiThinkingConfig(model || FREE_GOOGLE_MODEL);
     if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
     const contents: Content[] = [];
@@ -1164,7 +1196,7 @@ export class AiService {
     });
 
     const result = await this.genAI.models.generateContent({
-      model: model || DEFAULT_VISION_MODEL,
+      model: model || FREE_GOOGLE_MODEL,
       contents,
       config
     });
@@ -1194,7 +1226,7 @@ export class AiService {
       ];
 
       const cont = await this.genAI.models.generateContent({
-        model: model || DEFAULT_VISION_MODEL,
+        model: model || FREE_GOOGLE_MODEL,
         contents: continuationContents,
         config
       });
@@ -1270,7 +1302,7 @@ export class AiService {
       };
     }
 
-    const repairModelId = DEFAULT_VISION_MODEL;
+    const repairModelId = FREE_GOOGLE_MODEL;
     const repairConfig: any = {
       temperature: 0.0,
       maxOutputTokens: Math.max(resolveGeminiMaxOutputTokens(repairModelId), 1536),
