@@ -19,6 +19,7 @@ import { registerCaptureRoutes } from './routes/captures.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerTutorRoutes } from './routes/tutor.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerLocaleRoutes } from './routes/locale.js';
 import { setupCollaboration } from './socket/collaboration.js';
 import { loadEnv } from './lib/env.js';
 import {
@@ -82,6 +83,8 @@ async function bootstrap() {
   }
   
   const app = express();
+  // Trust reverse proxies (Railway/Cloudflare/Nginx) so req.ip uses X-Forwarded-For
+  app.set('trust proxy', true);
   const db = getDb(config);
 
   // Initialize services
@@ -143,6 +146,7 @@ async function bootstrap() {
   });
 
   // Register routes
+  registerLocaleRoutes({ app });
   registerAuthRoutes({ app, authService, googleClientId: config.googleClientId });
   registerMeRoutes({ app, authMiddleware, db });
   registerCaptureRoutes({ app, service: captureService, config, authMiddleware });

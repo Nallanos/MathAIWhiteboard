@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import whiteboardImg from '../assets/whiteboard.png';
+import { apiFetch } from '../lib/api';
 
 const FRANCOPHONE_LANGUAGES = ['fr', 'fr-FR', 'fr-CA', 'fr-BE', 'fr-CH'];
 
@@ -73,8 +74,33 @@ const content = {
 };
 
 export function Landing() {
-  const isFrench = useMemo(() => detectFrancophone(), []);
-  const t = isFrench ? content.fr : content.en;
+  const fallbackLocale = useMemo((): 'fr' | 'en' => (detectFrancophone() ? 'fr' : 'en'), []);
+  const [locale, setLocale] = useState<'fr' | 'en'>(fallbackLocale);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await apiFetch('/api/locale', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as { locale?: unknown };
+        const next = data?.locale;
+        if (cancelled) return;
+        if (next === 'fr' || next === 'en') {
+          setLocale(next);
+        }
+      } catch {
+        // ignore; keep fallback
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const t = locale === 'fr' ? content.fr : content.en;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">

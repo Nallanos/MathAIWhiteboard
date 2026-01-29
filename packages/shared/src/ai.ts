@@ -2,6 +2,24 @@ export type AIMode = 'auto' | 'manual';
 
 export type ChatMode = 'board' | 'tutor';
 
+export type ThinkingLevel = 'low' | 'medium' | 'high';
+
+export type ThinkingConfig =
+  | { mode: 'auto' }
+  | { mode: 'level'; level: ThinkingLevel }
+  | { mode: 'budget'; budget: number };
+
+export type AiStreamStage = 'capture' | 'context' | 'model' | 'latex' | 'persist' | 'done';
+
+export type AiStreamEvent =
+  | { type: 'status'; stage: AiStreamStage; message?: string }
+  | { type: 'delta'; text: string }
+  | { type: 'replace'; text: string }
+  | { type: 'usage'; usage?: Record<string, number | undefined> }
+  | { type: 'credits'; remaining?: number }
+  | { type: 'error'; error: string }
+  | { type: 'done'; messageId?: string; model: string; provider: string };
+
 export type TutorHintPolicy = 'dont_give_full_solution' | 'guided' | 'direct';
 
 export interface TutorPlanStep {
@@ -67,6 +85,7 @@ export interface AIPromptPayload {
   boardVersion?: number;
   provider?: 'google' | 'openai' | 'anthropic';
   model?: string;
+  thinking?: ThinkingConfig;
 }
 
 export interface LatexDiagnostics {

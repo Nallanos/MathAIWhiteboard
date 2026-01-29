@@ -10,6 +10,7 @@ interface Props {
   disabled?: boolean;
   onChange: (value: string) => void;
   onSubmit: () => Promise<void> | void;
+  onStop?: () => void;
   placeholder: string;
   theme: 'light' | 'dark';
   chatMode: ChatMode;
@@ -20,6 +21,10 @@ interface Props {
   aiCredits: number | null;
   tutor?: TutorPayload | null;
   onTutorStepClick?: (stepId: string) => void;
+  thinkingLevel?: string;
+  onThinkingLevelChange?: (level: string) => void;
+  streamingStage?: string | null;
+  isStreaming?: boolean;
 }
 
 export function InputBox({
@@ -27,6 +32,7 @@ export function InputBox({
   disabled,
   onChange,
   onSubmit,
+  onStop,
   placeholder,
   theme,
   chatMode,
@@ -36,7 +42,11 @@ export function InputBox({
   premiumAvailable,
   aiCredits,
   tutor,
-  onTutorStepClick
+  onTutorStepClick,
+  thinkingLevel = 'auto',
+  onThinkingLevelChange,
+  streamingStage,
+  isStreaming
 }: Props) {
   const isDark = theme === 'dark';
   const wrapperClass = `mt-4 rounded-2xl border p-3 shadow-sm ${
@@ -86,10 +96,19 @@ export function InputBox({
   const firstStep = visibleSteps[0] ?? null;
   const remainingSteps = visibleSteps.slice(1);
 
-  const canSubmit = Boolean(value.trim()) && !disabled;
+  const canSubmit = Boolean(value.trim()) && !disabled && !isStreaming;
+  const isGemini3 = model?.startsWith('gemini-3');
+  const showThinkingControl = isGemini3 && chatMode === 'board';
 
   return (
     <div className={wrapperClass}>
+      {streamingStage && (
+        <div className={`mb-2 flex items-center gap-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+          <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+          <span>{streamingStage}</span>
+        </div>
+      )}
+
       {showTodos && (
         <div className="mb-3">
           {!steps.length ? (
@@ -216,6 +235,22 @@ export function InputBox({
             </option>
           </select>
 
+          {showThinkingControl && onThinkingLevelChange && (
+            <select
+              className={selectClass}
+              value={thinkingLevel}
+              onChange={(e) => onThinkingLevelChange(e.target.value)}
+              disabled={disabled}
+              aria-label="Thinking"
+              title="Niveau de réflexion (Gemini 3)"
+            >
+              <option value="auto">Auto</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          )}
+
           {typeof aiCredits === 'number' && (
             <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
               {`Crédits: ${aiCredits}`}
@@ -223,29 +258,49 @@ export function InputBox({
           )}
         </div>
 
-        <button
-          type="button"
-          className={sendButtonClass}
-          onClick={() => onSubmit()}
-          disabled={!canSubmit}
-          title="Envoyer"
-          aria-label="Envoyer"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {isStreaming && onStop ? (
+          <button
+            type="button"
+            className={sendButtonClass}
+            onClick={() => onStop()}
+            title="Arrêter"
+            aria-label="Arrêter"
           >
-            <path d="M22 2L11 13" />
-            <path d="M22 2l-7 20-4-9-9-4 20-7z" />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <rect x="6" y="6" width="12" height="12" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={sendButtonClass}
+            onClick={() => onSubmit()}
+            disabled={!canSubmit}
+            title="Envoyer"
+            aria-label="Envoyer"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M22 2L11 13" />
+              <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );

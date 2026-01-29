@@ -84,6 +84,11 @@ interface Props {
   tutor?: TutorPayload | null;
   onTutorStepClick?: (stepId: string) => void;
   onClose?: () => void;
+  thinkingLevel?: string;
+  onThinkingLevelChange?: (level: string) => void;
+  streamingStage?: string | null;
+  isStreaming?: boolean;
+  onStopStreaming?: () => void;
 }
 
 export function AISidebar({
@@ -103,7 +108,12 @@ export function AISidebar({
   aiCredits,
   tutor,
   onTutorStepClick,
-  onClose
+  onClose,
+  thinkingLevel,
+  onThinkingLevelChange,
+  streamingStage,
+  isStreaming,
+  onStopStreaming
 }: Props) {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const copy = SIDEBAR_COPY;
@@ -214,6 +224,7 @@ export function AISidebar({
         disabled={isBusy}
         onChange={setCurrentPrompt}
         onSubmit={handleSubmit}
+        onStop={onStopStreaming}
         placeholder={copy.composerPlaceholder}
         theme={theme}
         chatMode={chatMode}
@@ -224,6 +235,10 @@ export function AISidebar({
         aiCredits={aiCredits}
         tutor={tutor}
         onTutorStepClick={onTutorStepClick}
+        thinkingLevel={thinkingLevel}
+        onThinkingLevelChange={onThinkingLevelChange}
+        streamingStage={streamingStage}
+        isStreaming={isStreaming}
       />
     </aside>
   );

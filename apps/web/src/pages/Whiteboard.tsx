@@ -195,17 +195,19 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   
   const { saveBoard } = useBoardPersistence(api, { boardId, token });
 
-  const { messages, sendPrompt, isBusy, resetConversation, conversationId, conversations, activateConversation, tutor, fetchTutorSession, patchTutorState } = useAI(api, {
+  const { messages, sendPrompt, isBusy, resetConversation, conversationId, conversations, activateConversation, tutor, fetchTutorSession, patchTutorState, streamingStage, stopStreaming, isStreaming } = useAI(api, {
     boardId,
     autoCapture,
     locale: 'fr',
     token,
-    getSceneVersion
+    getSceneVersion,
+    enableStreaming: true
   });
 
   const [chatMode, setChatMode] = useState<ChatMode>('board');
   const [model, setModel] = useState<string>('gemini-3-flash-preview');
   const [premiumAvailable, setPremiumAvailable] = useState<boolean>(false);
+  const [thinkingLevel, setThinkingLevel] = useState<string>('auto');
 
   useEffect(() => {
     refreshMe().catch(() => {});
@@ -623,7 +625,10 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
             <AISidebar
               messages={messages}
               onSend={async (prompt) => {
-                await sendPrompt(prompt, chatMode, { model });
+                const thinking = thinkingLevel === 'auto' 
+                  ? { mode: 'auto' }
+                  : { mode: 'level', level: thinkingLevel };
+                await sendPrompt(prompt, chatMode, { model, thinking });
               }}
               isBusy={isBusy}
               theme={theme}
@@ -640,6 +645,11 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
               tutor={tutor}
               onTutorStepClick={handleTutorStepClick}
               onClose={() => setSidebarOpen(false)}
+              thinkingLevel={thinkingLevel}
+              onThinkingLevelChange={setThinkingLevel}
+              streamingStage={streamingStage}
+              isStreaming={isStreaming}
+              onStopStreaming={stopStreaming}
             />
           </div>
         </>

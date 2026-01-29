@@ -12,6 +12,7 @@ interface UseAIOptions {
   locale: 'fr' | 'en';
   token: string | null;
   getSceneVersion: () => number;
+  enableStreaming?: boolean;
 }
 
 export function useAI(
@@ -24,6 +25,8 @@ export function useAI(
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<any[]>([]);
   const [tutor, setTutor] = useState<TutorPayload | null>(null);
+  const [streamingStage, setStreamingStage] = useState<string | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const timerRef = useRef<number | null>(null);
   const lastUploadedVersionRef = useRef<number>(-1);
   const lastCaptureIdRef = useRef<string | null>(null);
@@ -241,14 +244,50 @@ export function useAI(
     [conversationId, options.token, tutor]
   );
 
+  const parseSSE = useCallback((data: string): any | null => {
+    const debugSSE = typeof window !== 'undefined' && window.localStorage.getItem('debugSSE') === '1';
+    try {
+      const normalized = data.replace(/\r\n/g, '\n');
+      const lines = normalized
+        .split('\n')
+        .map((l) => l.trimEnd())
+        .filter((line) => line.startsWith('data:'));
+      if (lines.length === 0) {
+        if (debugSSE) console.log('[parseSSE] No data: lines found in:', data.slice(0, 200));
+        return null;
+      }
+      const lastLine = lines[lines.length - 1];
+      const json = lastLine.replace(/^data:\s*/, '');
+      const parsed = JSON.parse(json);
+      if (debugSSE) {
+        console.log('[parseSSE] Parsed event:', parsed.type, parsed.type === 'delta' ? `(${parsed.text?.length || 0} chars)` : '');
+      }
+      return parsed;
+    } catch (err) {
+      if (debugSSE) console.warn('[parseSSE] Failed to parse:', data.slice(0, 200), err);
+      return null;
+    }
+  }, []);
+
+  const stopStreaming = useCallback(() => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setBusy(false);
+      setStreamingStage(null);
+    }
+  }, [abortController]);
+
   const sendPrompt = useCallback(
-    async (prompt: string, chatMode: ChatMode = 'board', opts?: { model?: string }) => {
+    async (prompt: string, chatMode: ChatMode = 'board', opts?: { model?: string; thinking?: any }) => {
       if (!prompt || !conversationId) return;
       setBusy(true);
+      setStreamingStage(null);
+      
       let captureId: string | null = null;
       let captureError: string | null = null;
+      
       try {
-        // Tutor mode is step-by-step: always send a fresh board snapshot.
         captureId = await uploadCapture({ force: chatMode === 'tutor' });
       } catch (error) {
         console.error(error);
@@ -281,10 +320,10 @@ export function useAI(
         chatMode,
         boardVersion: options.getSceneVersion(),
         provider: 'google',
-        model: opts?.model
+        model: opts?.model,
+        thinking: opts?.thinking
       };
 
-      // Optimistic update
       const tempId = crypto.randomUUID();
       setMessages((prev) => [
         ...capMessages(prev),
@@ -316,99 +355,231 @@ export function useAI(
         console.error('Failed to persist user message', err);
       }
 
-      try {
-        if (!options.token) {
-          throw new Error('Missing token');
-        }
+      const useStreaming = options.enableStreaming && chatMode === 'board';
+      
+      if (useStreaming) {
+        // Streaming mode
+        const controller = new AbortController();
+        setAbortController(controller);
+        
+        const draftId = crypto.randomUUID();
+        let accumulatedText = '';
+        
+        setMessages((prev) => [
+          ...capMessages(prev),
+          {
+            id: draftId,
+            boardId: options.boardId,
+            role: 'assistant',
+            content: '',
+            createdAt: new Date().toISOString()
+          }
+        ]);
 
-        const response = await apiFetch('/api/ai/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          token: options.token
-        });
+        try {
+          if (!options.token) {
+            throw new Error('Missing token');
+          }
 
-        if (!response.ok) {
-          let errorMessage = 'AI request failed';
-          try {
-            const maybeJson = await response.json();
-            if (typeof maybeJson?.error === 'string') errorMessage = maybeJson.error;
-            else if (typeof maybeJson?.message === 'string') errorMessage = maybeJson.message;
-            else errorMessage = JSON.stringify(maybeJson);
-          } catch {
+          const response = await apiFetch('/api/ai/analyze/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            token: options.token,
+            signal: controller.signal
+          });
+
+          if (!response.ok) {
+            let errorMessage = 'AI streaming failed';
             try {
-              const text = await response.text();
-              if (text) errorMessage = text;
-            } catch {
-              // ignore
+              const maybeJson = await response.json();
+              if (typeof maybeJson?.error === 'string') errorMessage = maybeJson.error;
+            } catch {}
+            throw new Error(errorMessage);
+          }
+
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error('Stream not available, falling back to non-streaming');
+          }
+
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const debugSSE = typeof window !== 'undefined' && window.localStorage.getItem('debugSSE') === '1';
+            if (debugSSE) console.log('[Stream] Raw buffer chunk:', buffer.slice(0, 300));
+            const lines = buffer.split(/\r?\n\r?\n/);
+            buffer = lines.pop() || '';
+            if (debugSSE) console.log('[Stream] Split into', lines.length, 'events, remaining buffer:', buffer.length);
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              
+              const event = parseSSE(line);
+              if (!event) continue;
+
+              if (event.type === 'status') {
+                setStreamingStage(event.message || event.stage);
+              } else if (event.type === 'delta') {
+                accumulatedText += event.text;
+                setMessages((prev) => 
+                  prev.map(m => m.id === draftId ? { ...m, content: accumulatedText } : m)
+                );
+              } else if (event.type === 'replace') {
+                accumulatedText = String(event.text || '');
+                setMessages((prev) => 
+                  prev.map(m => m.id === draftId ? { ...m, content: accumulatedText } : m)
+                );
+              } else if (event.type === 'credits') {
+                if (typeof event.remaining === 'number') {
+                  setAiCredits(event.remaining);
+                }
+              } else if (event.type === 'error') {
+                throw new Error(event.error);
+              } else if (event.type === 'done') {
+                setStreamingStage(null);
+              }
             }
           }
-          throw new Error(errorMessage);
-        }
 
-        let result: AIAnalyzeResponse;
+          // Flush any trailing buffered event (in case the stream ended without a final separator).
+          const trailing = parseSSE(buffer);
+          if (trailing?.type === 'replace') {
+            accumulatedText = String(trailing.text || '');
+            setMessages((prev) => prev.map(m => m.id === draftId ? { ...m, content: accumulatedText } : m));
+          } else if (trailing?.type === 'delta') {
+            accumulatedText += trailing.text;
+            setMessages((prev) => prev.map(m => m.id === draftId ? { ...m, content: accumulatedText } : m));
+          }
+
+          // Persist final message
+          if (accumulatedText && options.token) {
+            await apiFetch('/api/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                conversationId,
+                role: 'assistant',
+                content: accumulatedText
+              }),
+              token: options.token
+            });
+          }
+
+        } catch (error) {
+          if (controller.signal.aborted) {
+            setMessages((prev) => 
+              prev.map(m => m.id === draftId ? { ...m, content: accumulatedText + '\n\n_[Interrompu]_' } : m)
+            );
+          } else {
+            console.error('AI streaming failed', error);
+            const content = error instanceof Error ? `AI error: ${error.message}` : 'AI error: streaming failed';
+            setMessages((prev) => 
+              prev.map(m => m.id === draftId ? { ...m, content } : m)
+            );
+          }
+        } finally {
+          setAbortController(null);
+          setBusy(false);
+          setStreamingStage(null);
+        }
+      } else {
+        // Non-streaming mode (original logic)
         try {
-          result = (await response.json()) as AIAnalyzeResponse;
-        } catch {
-          throw new Error('AI response was not valid JSON');
-        }
-        
-        const assistantContent = result.message ?? 'Assistant en cours de préparation…';
-
-        if (typeof result.aiCreditsRemaining === 'number') {
-          setAiCredits(result.aiCreditsRemaining);
-        }
-
-        if (result.tutor) {
-          setTutor(result.tutor);
-        }
-        
-        // Persist assistant message (only on success)
-        await apiFetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId,
-            role: 'assistant',
-            content: assistantContent
-          }),
-          token: options.token
-        });
-
-        setMessages((prev) => [
-          ...capMessages(prev),
-          {
-            id: crypto.randomUUID(),
-            boardId: options.boardId,
-            role: 'assistant',
-            content: assistantContent,
-            createdAt: new Date().toISOString()
+          if (!options.token) {
+            throw new Error('Missing token');
           }
-        ]);
-      } catch (error) {
-        console.error('AI request failed', error);
 
-        // Surface a non-persisted error message to the user.
-        const content =
-          error instanceof Error
-            ? `AI error: ${error.message}`
-            : 'AI error: request failed';
+          const response = await apiFetch('/api/ai/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            token: options.token
+          });
 
-        setMessages((prev) => [
-          ...capMessages(prev),
-          {
-            id: crypto.randomUUID(),
-            boardId: options.boardId,
-            role: 'assistant',
-            content,
-            createdAt: new Date().toISOString()
+          if (!response.ok) {
+            let errorMessage = 'AI request failed';
+            try {
+              const maybeJson = await response.json();
+              if (typeof maybeJson?.error === 'string') errorMessage = maybeJson.error;
+              else if (typeof maybeJson?.message === 'string') errorMessage = maybeJson.message;
+              else errorMessage = JSON.stringify(maybeJson);
+            } catch {
+              try {
+                const text = await response.text();
+                if (text) errorMessage = text;
+              } catch {}
+            }
+            throw new Error(errorMessage);
           }
-        ]);
-      } finally {
-        setBusy(false);
+
+          let result: AIAnalyzeResponse;
+          try {
+            result = (await response.json()) as AIAnalyzeResponse;
+          } catch {
+            throw new Error('AI response was not valid JSON');
+          }
+          
+          const assistantContent = result.message ?? 'Assistant en cours de préparation…';
+
+          if (typeof result.aiCreditsRemaining === 'number') {
+            setAiCredits(result.aiCreditsRemaining);
+          }
+
+          if (result.tutor) {
+            setTutor(result.tutor);
+          }
+          
+          await apiFetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              conversationId,
+              role: 'assistant',
+              content: assistantContent
+            }),
+            token: options.token
+          });
+
+          setMessages((prev) => [
+            ...capMessages(prev),
+            {
+              id: crypto.randomUUID(),
+              boardId: options.boardId,
+              role: 'assistant',
+              content: assistantContent,
+              createdAt: new Date().toISOString()
+            }
+          ]);
+        } catch (error) {
+          console.error('AI request failed', error);
+
+          const content =
+            error instanceof Error
+              ? `AI error: ${error.message}`
+              : 'AI error: request failed';
+
+          setMessages((prev) => [
+            ...capMessages(prev),
+            {
+              id: crypto.randomUUID(),
+              boardId: options.boardId,
+              role: 'assistant',
+              content,
+              createdAt: new Date().toISOString()
+            }
+          ]);
+        } finally {
+          setBusy(false);
+        }
       }
     },
-    [setAiCredits, uploadCapture, options, capMessages]
+    [conversationId, uploadCapture, options, capMessages, setAiCredits, parseSSE]
   );
 
   useEffect(() => {
@@ -419,5 +590,19 @@ export function useAI(
     };
   }, []);
 
-  return { messages, sendPrompt, isBusy, resetConversation, conversationId, conversations, activateConversation, tutor, fetchTutorSession, patchTutorState };
+  return { 
+    messages, 
+    sendPrompt, 
+    isBusy, 
+    resetConversation, 
+    conversationId, 
+    conversations, 
+    activateConversation, 
+    tutor, 
+    fetchTutorSession, 
+    patchTutorState,
+    streamingStage,
+    stopStreaming,
+    isStreaming: abortController !== null
+  };
 }

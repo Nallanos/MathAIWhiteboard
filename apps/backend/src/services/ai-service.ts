@@ -45,20 +45,53 @@ function resolveGeminiThinkingConfig(modelId: string | undefined): ThinkingConfi
   const normalizedLevel = (rawLevel === 'LOW' || rawLevel === 'MEDIUM' || rawLevel === 'HIGH' ? rawLevel : 'HIGH') as any;
   const hasLevel = rawLevelEnv.length > 0;
 
+  // If neither env var is set, do not force a thinking mode.
+  // This improves time-to-first-token and makes streaming feel more responsive.
+  if (!hasBudget && !hasLevel) return undefined;
+
   if (hasBudget) {
     return {
-      // Keep thinking enabled, but avoid it consuming the entire output budget.
       thinkingBudget: rawBudget,
-      // Do not expose thoughts to the user.
       includeThoughts: false
     };
   }
 
   return {
-    thinkingLevel: hasLevel ? normalizedLevel : ('HIGH' as any),
-    // Do not expose thoughts to the user.
+    thinkingLevel: normalizedLevel,
     includeThoughts: false
   };
+}
+
+function applyUserThinkingConfig(
+  baseConfig: ThinkingConfig | undefined,
+  userConfig: any
+): ThinkingConfig | undefined {
+  if (!userConfig || typeof userConfig !== 'object') return baseConfig;
+
+  const mode = userConfig.mode;
+  if (mode === 'auto') return baseConfig;
+  
+  if (mode === 'level') {
+    const level = String(userConfig.level || '').toUpperCase();
+    if (level === 'LOW' || level === 'MEDIUM' || level === 'HIGH') {
+      return {
+        thinkingLevel: level as any,
+        includeThoughts: false
+      };
+    }
+  }
+  
+  if (mode === 'budget') {
+    const budget = Number(userConfig.budget);
+    if (Number.isFinite(budget) && budget >= 1 && budget <= 10000) {
+      return {
+        thinkingBudget: Math.floor(budget),
+        includeThoughts: false
+      };
+    }
+  }
+
+  return baseConfig;
 }
 
 function resolveGeminiMaxOutputTokens(modelId: string | undefined): number {
@@ -69,6 +102,33 @@ function resolveGeminiMaxOutputTokens(modelId: string | undefined): number {
 
 type GeminiUsage = { promptTokens?: number; outputTokens?: number; thoughtTokens?: number; totalTokens?: number };
 type GeminiTextResult = { text: string; finishReason?: string; usage?: GeminiUsage; latex?: SharedLatexDiagnostics };
+
+function extractGeminiDeltaText(chunk: any): string {
+  if (!chunk) return '';
+
+  // Some SDK versions expose a convenience text field.
+  if (typeof chunk.text === 'string') return chunk.text;
+
+  // Some SDK versions expose a text() helper.
+  if (typeof chunk.text === 'function') {
+    try {
+      const maybe = chunk.text();
+      if (typeof maybe === 'string') return maybe;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Canonical shape: candidates[0].content.parts[].text
+  const parts = chunk?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+
+  let out = '';
+  for (const part of parts) {
+    if (part && typeof part.text === 'string') out += part.text;
+  }
+  return out;
+}
 
 function extractGeminiFinishReason(response: any): string | undefined {
   const reason = response?.candidates?.[0]?.finishReason;
@@ -605,6 +665,116 @@ export class AiService {
 
       console.error(`${provider} analysis failed`, error);
       throw new Error('AI analysis failed');
+    }
+  }
+
+  async analyzeStream(
+    payload: AIPromptPayload,
+    userId: string,
+    onEvent: (event: any) => void
+  ): Promise<{ messageId?: string; provider: string; model: string }> {
+    const chatMode = payload.chatMode ?? 'board';
+
+    onEvent({ type: 'status', stage: 'context', message: 'Loading context...' });
+
+    const capture = payload.captureId
+      ? await this.loadCapture(payload.captureId)
+      : null;
+    console.log('[analyzeStream] Capture loaded:', !!capture, capture ? `id=${payload.captureId}` : '(no captureId)');
+
+    const wantsVision = Boolean(capture);
+    const ignoreHistoryForVision = chatMode === 'board' && wantsVision && this.shouldIgnoreHistoryForVision(payload.prompt);
+
+    const historyLimit = chatMode === 'tutor'
+      ? 6
+      : wantsVision
+        ? (ignoreHistoryForVision ? 0 : 6)
+        : 20;
+
+    const history = historyLimit > 0
+      ? await this.loadHistory(payload.conversationId, historyLimit)
+      : [];
+    console.log('[analyzeStream] History loaded:', history.length, 'messages, historyLimit:', historyLimit);
+
+    const provider = payload.provider || 'google';
+    let model = provider === 'google'
+      ? this.resolveGoogleModel(payload.model)
+      : (payload.model || FREE_GOOGLE_MODEL);
+
+    const shouldCharge = provider === 'google' && this.isPremiumGoogleModel(model);
+    console.log('[analyzeStream] Model resolution:', { provider, model, shouldCharge });
+    let reservedCredit = false;
+    let aiCreditsRemaining: number | undefined = undefined;
+
+    if (shouldCharge) {
+      console.log('[analyzeStream] Premium model requested, resolving...');
+      model = await this.resolveAvailablePremiumGoogleModel(model);
+      await this.ensureCreditsFresh(userId);
+      const remaining = await this.tryConsumeCredits(userId, 1);
+      if (typeof remaining !== 'number') {
+        throw new InsufficientCreditsError(
+          `Crédits insuffisants: ${PREMIUM_GOOGLE_MODEL} coûte 1 crédit. Utilise ${FREE_GOOGLE_MODEL} (gratuit) ou recharge tes crédits.`
+        );
+      }
+      reservedCredit = true;
+      aiCreditsRemaining = remaining;
+    }
+
+    try {
+      if (chatMode === 'tutor') {
+        onEvent({ type: 'error', error: 'Streaming not supported for tutor mode yet' });
+        throw new Error('Tutor mode streaming not yet implemented');
+      }
+
+      console.log('[analyzeStream] Entering generation phase...');
+      onEvent({ type: 'status', stage: 'model', message: 'Generating...' });
+
+      if (provider !== 'google') {
+        onEvent({ type: 'error', error: 'Streaming only supported for Google provider' });
+        throw new Error('Streaming only supported for Google provider');
+      }
+
+      let fullText = '';
+      await this.generateWithGeminiStream(payload, chatMode, capture, history, model, (delta) => {
+        fullText += delta;
+        onEvent({ type: 'delta', text: delta });
+      });
+
+      onEvent({ type: 'status', stage: 'latex', message: 'Validating LaTeX...' });
+      
+      let cleaned = this.cleanResponse(fullText);
+      const repaired = await this.validateAndRepairLatexIfNeeded(cleaned, model);
+      
+      if (repaired.text !== fullText) {
+        // Replace the streamed draft with the validated/repaired final text.
+        onEvent({ type: 'replace', text: repaired.text });
+        fullText = repaired.text;
+      }
+
+      onEvent({ type: 'status', stage: 'persist', message: 'Saving...' });
+
+      if (aiCreditsRemaining !== undefined) {
+        onEvent({ type: 'credits', remaining: aiCreditsRemaining });
+      }
+
+      if (repaired.latex) {
+        onEvent({ type: 'usage', usage: { latexErrors: repaired.latex.errorCount } });
+      }
+
+      return {
+        messageId: undefined,
+        provider,
+        model
+      };
+    } catch (error) {
+      if (reservedCredit) {
+        try {
+          await this.refundCredits(userId, 1);
+        } catch (refundError) {
+          console.error('Failed to refund AI credits', refundError);
+        }
+      }
+      throw error;
     }
   }
 
@@ -1160,7 +1330,10 @@ export class AiService {
       maxOutputTokens,
       topP: 0.9
     };
-    const thinkingConfig = resolveGeminiThinkingConfig(model || FREE_GOOGLE_MODEL);
+    let thinkingConfig = resolveGeminiThinkingConfig(model || FREE_GOOGLE_MODEL);
+    if (payload.thinking) {
+      thinkingConfig = applyUserThinkingConfig(thinkingConfig, payload.thinking);
+    }
     if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
     const contents: Content[] = [];
@@ -1241,6 +1414,111 @@ export class AiService {
     let cleaned = this.cleanResponse(text);
     const repaired = await this.validateAndRepairLatexIfNeeded(cleaned, model);
     return { text: repaired.text, finishReason, usage, latex: repaired.latex };
+  }
+
+  private async generateWithGeminiStream(
+    payload: AIPromptPayload,
+    chatMode: 'board' | 'tutor',
+    capture: CaptureRecord | null,
+    history: { role: string; content: string }[],
+    model: string,
+    onDelta: (text: string) => void
+  ): Promise<void> {
+    const maxOutputTokens = resolveGeminiMaxOutputTokens(model);
+    const config: any = {
+      temperature: 0.2,
+      maxOutputTokens,
+      topP: 0.9
+    };
+    
+    let thinkingConfig = resolveGeminiThinkingConfig(model || FREE_GOOGLE_MODEL);
+    if (payload.thinking) {
+      thinkingConfig = applyUserThinkingConfig(thinkingConfig, payload.thinking);
+    }
+    if (thinkingConfig) config.thinkingConfig = thinkingConfig;
+
+    const contents: Content[] = [];
+
+    for (const msg of history) {
+      contents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }]
+      });
+    }
+
+    const currentParts: Part[] = [];
+
+    if (capture) {
+      const base64Image = await this.readImageAsBase64(capture.imageUrl);
+      currentParts.push({
+        inlineData: {
+          data: base64Image,
+          mimeType: this.inferImageMimeTypeFromPath(capture.imageUrl)
+        }
+      });
+    }
+
+    currentParts.push({ text: this.buildSystemPrompt(payload.locale, chatMode, capture, payload.boardVersion) });
+    currentParts.push({ text: `Demande de l'élève: ${payload.prompt}` });
+
+    contents.push({
+      role: 'user',
+      parts: currentParts
+    });
+
+    const debugStreaming = process.env.DEBUG_STREAMING === '1';
+    if (debugStreaming) {
+      console.log('[generateWithGeminiStream] About to call generateContentStream with model:', model);
+      console.log('[generateWithGeminiStream] Config:', JSON.stringify(config, null, 2));
+    }
+
+    let result: any;
+    try {
+      result = await this.genAI.models.generateContentStream({
+        model: model || FREE_GOOGLE_MODEL,
+        contents,
+        config
+      });
+      if (debugStreaming) console.log('[generateWithGeminiStream] Stream initialized successfully');
+    } catch (streamError) {
+      console.error('[generateWithGeminiStream] Failed to initialize stream:', streamError);
+      throw streamError;
+    }
+
+    // SDK shape differs by version: either `result` is an async iterable,
+    // or it exposes `.stream` which is the async iterable.
+    const iterable: AsyncIterable<any> = (result && result.stream && typeof result.stream[Symbol.asyncIterator] === 'function')
+      ? result.stream
+      : result;
+
+    if (debugStreaming) console.log('[generateWithGeminiStream] Starting to iterate over stream...');
+    let chunkCount = 0;
+    for await (const chunk of iterable) {
+      chunkCount++;
+      const delta = extractGeminiDeltaText(chunk);
+
+      if (debugStreaming && chunkCount <= 3) {
+        const directText = typeof (chunk as any)?.text === 'string' ? (chunk as any).text : undefined;
+        const textFn = typeof (chunk as any)?.text === 'function' ? 'function' : undefined;
+        const parts = (chunk as any)?.candidates?.[0]?.content?.parts;
+        const partKeys = Array.isArray(parts) ? parts.map((p: any) => (p && typeof p === 'object' ? Object.keys(p) : typeof p)) : undefined;
+        const firstPartText = Array.isArray(parts) ? parts?.[0]?.text : undefined;
+        console.log('[generateWithGeminiStream] Chunk sample', {
+          chunkCount,
+          deltaLen: typeof delta === 'string' ? delta.length : -1,
+          hasCandidates: Array.isArray((chunk as any)?.candidates),
+          directTextLen: typeof directText === 'string' ? directText.length : undefined,
+          textFn,
+          partKeys,
+          firstPartTextType: typeof firstPartText
+        });
+      }
+
+      if (delta) {
+        onDelta(delta);
+      }
+    }
+    if (debugStreaming) console.log('[generateWithGeminiStream] Stream completed, total chunks:', chunkCount);
   }
 
   private async validateAndRepairLatexIfNeeded(
