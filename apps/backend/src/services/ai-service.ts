@@ -442,14 +442,14 @@ function validateLatexWithKatex(input: string): {
 }
 
 export class ModelUnavailableError extends Error {
-  constructor(message = 'Ce modèle n\'est pas disponible pour cette clé API.') {
+  constructor(message = 'This model is not available for this API key.') {
     super(message);
     this.name = 'ModelUnavailableError';
   }
 }
 
 export class InsufficientCreditsError extends Error {
-  constructor(message = 'Crédits insuffisants pour utiliser ce modèle.') {
+  constructor(message = 'Insufficient credits to use this model.') {
     super(message);
     this.name = 'InsufficientCreditsError';
   }
@@ -569,7 +569,7 @@ export class AiService {
       const remaining = await this.tryConsumeCredits(userId, 1);
       if (typeof remaining !== 'number') {
         throw new InsufficientCreditsError(
-          `Crédits insuffisants: ${PREMIUM_GOOGLE_MODEL} coûte 1 crédit. Utilise ${FREE_GOOGLE_MODEL} (gratuit) ou recharge tes crédits.`
+          `Insufficient credits: ${PREMIUM_GOOGLE_MODEL} costs 1 credit. Use ${FREE_GOOGLE_MODEL} (free) or recharge your credits.`
         );
       }
       reservedCredit = true;
@@ -598,7 +598,7 @@ export class AiService {
           return {
             status: 'completed',
             message:
-              "Le mode tuteur a eu un souci pour générer le plan (JSON incomplet). Réessaie, ou reformule plus court. Si ça persiste, passe en mode tableau.",
+              "Tutor mode had an issue generating the plan (incomplete JSON). Try again, or rephrase shorter. If it persists, switch to board mode.",
             provider: 'google',
             model,
             strategy: wantsVision ? 'vision' : 'text',
@@ -659,7 +659,7 @@ export class AiService {
       const maybeAny = error as any;
       if (provider === 'google' && maybeAny?.status === 404) {
         throw new ModelUnavailableError(
-          `Modèle indisponible: ${model}. (Google API v1beta a répondu 404).`
+          `Model unavailable: ${model}. (Google API v1beta responded 404).`
         );
       }
 
@@ -713,7 +713,7 @@ export class AiService {
       const remaining = await this.tryConsumeCredits(userId, 1);
       if (typeof remaining !== 'number') {
         throw new InsufficientCreditsError(
-          `Crédits insuffisants: ${PREMIUM_GOOGLE_MODEL} coûte 1 crédit. Utilise ${FREE_GOOGLE_MODEL} (gratuit) ou recharge tes crédits.`
+          `Insufficient credits: ${PREMIUM_GOOGLE_MODEL} costs 1 credit. Use ${FREE_GOOGLE_MODEL} (free) or recharge your credits.`
         );
       }
       reservedCredit = true;
@@ -803,7 +803,7 @@ export class AiService {
     if (okFallback) return fallback;
 
     throw new ModelUnavailableError(
-      `Modèle indisponible: ${requestedModel}. Utilise ${FREE_GOOGLE_MODEL} ou vérifie les modèles disponibles pour ta clé Google.`
+      `Model unavailable: ${requestedModel}. Use ${FREE_GOOGLE_MODEL} or check available models for your Google key.`
     );
   }
 
@@ -1053,7 +1053,7 @@ export class AiService {
 
     if (!currentStepId) {
       return {
-        message: "Toutes les étapes sont terminées. Envoie un nouvel énoncé / une nouvelle question pour générer un nouveau plan.",
+        message: "All steps completed. Send a new problem statement / question to generate a new plan.",
         tutor: { plan: effectivePlan, state: { ...state, currentStepId: null } }
       };
     }
@@ -1104,16 +1104,16 @@ export class AiService {
     }
 
     const instruction = [
-      'Tu es un planner de tuteur de maths.',
-      'Ta tâche: produire un plan d\'exercice sous forme de JSON STRICT (aucun markdown, aucun texte hors JSON).',
-      'Langue: utilise la même langue que l\'élève (déduite de "Énoncé / demande de l\'élève"). Si l\'élève écrit en anglais, écris tout en anglais.',
-      'Contraintes:',
-      '- 3 à 8 étapes maximum.',
-      '- ids stables: step_1, step_2, ...',
-      '- Chaque étape doit être actionnable et petite.',
+      'You are a math tutor planner.',
+      'Your task: produce an exercise plan in STRICT JSON format (no markdown, no text outside JSON).',
+      'Language: use the same language as the student (deduced from "Student\'s statement / request"). If the student writes in French, write everything in French.',
+      'Constraints:',
+      '- 3 to 8 steps maximum.',
+      '- Stable ids: step_1, step_2, ...',
+      '- Each step must be actionable and small.',
       '- hint_policy: dont_give_full_solution | guided | direct',
       '',
-      'Schéma JSON exact:',
+      'Exact JSON schema:',
       '{',
       '  "goal": "string",',
       '  "prerequisites": ["string"],',
@@ -1128,8 +1128,8 @@ export class AiService {
       '  ]',
       '}',
       '',
-      `Contexte tableau (résumé): ${capture ? this.describeScene(capture.scene) : 'aucune capture'}.`,
-      `Énoncé / demande de l'élève: ${payload.prompt}`
+      `Board context (summary): ${capture ? this.describeScene(capture.scene) : 'no capture'}.`,
+      `Student's statement / request: ${payload.prompt}`
     ].join('\n');
 
     parts.push({ text: instruction });
@@ -1201,7 +1201,7 @@ export class AiService {
 
     // Final fallback: one full retry with stricter instruction.
     const retryInstruction = instruction +
-      "\n\nRAPPEL CRITIQUE: Tu dois retourner un JSON PARSEABLE. Aucun texte hors JSON. Vérifie que toutes les accolades/chevrons sont fermées.";
+      "\n\nCRITICAL REMINDER: You must return PARSEABLE JSON. No text outside JSON. Check that all braces/brackets are closed.";
     const retryParts: Part[] = [];
     if (capture) {
       const base64Image = await this.readImageAsBase64(capture.imageUrl);
@@ -1261,15 +1261,15 @@ export class AiService {
     }
 
     const sys = [
-      'Tu es « Le Prof Artificiel », un tuteur de mathématiques.',
-      'Mode PENSER: tu dois suivre un plan (todos) et ne traiter que l\'étape courante.',
-      'Langue: réponds dans la même langue que le dernier message de l\'élève. Si l\'élève écrit en anglais, réponds en anglais.',
-      'Règles:',
-      '- Donne UNIQUEMENT l\'étape courante: une action courte + un mini indice si besoin.',
-      '- Pose EXACTEMENT UNE question de validation à la fin.',
-      '- Ne donne pas la correction complète.',
-      '- FORMATAGE MATH : LaTeX uniquement ($ ou $$), sans duplication en texte brut.',
-      capture ? 'Si une capture est présente, elle est la source de vérité.' : 'Aucune capture.'
+      'You are "The AI Teacher", a mathematics tutor.',
+      'THINK mode: you must follow a plan (todos) and only handle the current step.',
+      'Language: respond in the same language as the student\'s last message. If the student writes in French, respond in French.',
+      'Rules:',
+      '- Give ONLY the current step: a short action + a mini hint if needed.',
+      '- Ask EXACTLY ONE validation question at the end.',
+      '- Do not give the complete solution.',
+      '- MATH FORMATTING: LaTeX only ($ or $$), without duplication in plain text.',
+      capture ? 'If a capture is present, it is the source of truth.' : 'No capture.'
     ].join('\n');
 
     const historyText = (history ?? []).slice(-6).map((m) => {
@@ -1282,18 +1282,18 @@ export class AiService {
       '',
       capture ? `SCENE_SUMMARY: ${this.describeScene(capture.scene)}` : 'SCENE_SUMMARY: none',
       '',
-      historyText ? ['HISTORIQUE_RECENT:', historyText, ''].join('\n') : undefined,
+      historyText ? ['RECENT_HISTORY:', historyText, ''].join('\n') : undefined,
       'PLAN_JSON:',
       JSON.stringify(plan),
       '',
       'STATE_JSON:',
       JSON.stringify(state),
       '',
-      `ETAPE_COURANTE_ID: ${currentStepId}`,
-      `ETAPE_COURANTE_TITRE: ${currentStep.title}`,
-      `CRITERES: ${(currentStep.success_criteria ?? []).join(' | ')}`,
+      `CURRENT_STEP_ID: ${currentStepId}`,
+      `CURRENT_STEP_TITLE: ${currentStep.title}`,
+      `CRITERIA: ${(currentStep.success_criteria ?? []).join(' | ')}`,
       '',
-      `Demande de l'élève: ${payload.prompt}`
+      `Student's request: ${payload.prompt}`
     ].filter(Boolean).join('\n');
 
     parts.push({ text: context });
@@ -1361,7 +1361,7 @@ export class AiService {
     }
 
     currentParts.push({ text: this.buildSystemPrompt(payload.locale, chatMode, capture, payload.boardVersion) });
-    currentParts.push({ text: `Demande de l'élève: ${payload.prompt}` });
+    currentParts.push({ text: `Student's request: ${payload.prompt}` });
 
     contents.push({
       role: 'user',
@@ -1392,7 +1392,7 @@ export class AiService {
           parts: [
             {
               text:
-                "Continue exactement où tu t'es arrêté. Ne répète pas. Garde le même formatage (Markdown + LaTeX $/$$)."
+                "Continue exactly where you stopped. Don't repeat. Keep the same formatting (Markdown + LaTeX $/$$)."
             }
           ]
         }
@@ -1459,7 +1459,7 @@ export class AiService {
     }
 
     currentParts.push({ text: this.buildSystemPrompt(payload.locale, chatMode, capture, payload.boardVersion) });
-    currentParts.push({ text: `Demande de l'élève: ${payload.prompt}` });
+    currentParts.push({ text: `Student's request: ${payload.prompt}` });
 
     contents.push({
       role: 'user',
@@ -1593,21 +1593,21 @@ export class AiService {
       .join('\n\n');
 
     const prompt = [
-      'Tu vas corriger UNIQUEMENT des erreurs de syntaxe LaTeX dans le texte suivant.',
-      'Contraintes STRICTES:',
-      "- Ne change pas le contenu mathématique ni le sens des phrases.",
-      "- Ne reformule pas, ne rajoute rien, ne supprime rien sauf si nécessaire pour réparer le LaTeX.",
-      "- Répare les délimiteurs $...$ et $$...$$ (ouvrir/fermer correctement).",
-      "- Répare les environnements \\begin{...} / \\end{...} si nécessaire (appariement).",
-      "- Ne transforme pas les maths en blocs de code et n'ajoute aucun ```.",
+      'You will ONLY fix LaTeX syntax errors in the following text.',
+      'STRICT constraints:',
+      "- Don't change the mathematical content or meaning of sentences.",
+      "- Don't rephrase, don't add anything, don't remove anything except to repair LaTeX.",
+      "- Repair $...$ and $$...$$ delimiters (open/close correctly).",
+      "- Repair \\begin{...} / \\end{...} environments if needed (pairing).",
+      "- Don't transform math into code blocks and don't add any ```.",
       '',
-      'Erreurs détectées par KaTeX:',
-      errorList || '(aucune précision)',
+      'Errors detected by KaTeX:',
+      errorList || '(no details)',
       '',
-      'TEXTE ORIGINAL (copie exacte) :',
+      'ORIGINAL TEXT (exact copy):',
       normalized,
       '',
-      'Rends UNIQUEMENT le texte corrigé (même contenu, LaTeX corrigé).'
+      'Return ONLY the corrected text (same content, LaTeX fixed).'
     ].join('\n');
 
     const res = await this.genAI.models.generateContent({
@@ -1693,7 +1693,7 @@ export class AiService {
       });
     }
 
-    userContent.push({ type: 'text', text: `Demande de l'élève: ${payload.prompt}` });
+    userContent.push({ type: 'text', text: `Student's request: ${payload.prompt}` });
 
     messages.push({ role: 'user', content: userContent });
 
@@ -1738,7 +1738,7 @@ export class AiService {
       });
     }
 
-    userContent.push({ type: 'text', text: `Demande de l'élève: ${payload.prompt}` });
+    userContent.push({ type: 'text', text: `Student's request: ${payload.prompt}` });
 
     messages.push({ role: 'user', content: userContent });
 
@@ -1778,25 +1778,25 @@ export class AiService {
     capture: CaptureRecord | null,
     boardVersion?: number
   ): string {
-    const defaultLanguage = locale === 'en' ? 'clear English' : 'français (niveau lycée)';
+    const defaultLanguage = locale === 'en' ? 'clear English' : 'French (high school level)';
     const languageRule = locale === 'en'
       ? 'Language: reply in the same language as the user\'s latest message. If unclear, default to clear English.'
-      : `Langue: réponds dans la même langue que le dernier message de l'élève. Si l'élève écrit en anglais, réponds en anglais. Si ce n'est pas clair, par défaut: ${defaultLanguage}.`;
+      : `Language: respond in the same language as the student's last message. If the student writes in English, respond in English. If unclear, default: ${defaultLanguage}.`;
 
     const versionLine = boardVersion !== undefined
-      ? `Version du tableau: ${boardVersion}. Si une image est jointe, elle correspond à cette version.`
+      ? `Board version: ${boardVersion}. If an image is attached, it corresponds to this version.`
       : undefined;
 
     const boardSummary = capture
-      ? `Capture fournie (image + scène). Aperçu scène: ${this.describeScene(capture.scene)}.`
-      : 'Aucune capture fournie.';
+      ? `Capture provided (image + scene). Scene preview: ${this.describeScene(capture.scene)}.`
+      : 'No capture provided.';
 
     const modeLine = chatMode === 'tutor'
-      ? 'Mode PENSER : avance étape par étape. Donne UNE étape, puis pose UNE question de validation.'
-      : 'Mode TABLEAU : priorise ce qui est visible sur le tableau.';
+      ? 'THINK mode: advance step by step. Give ONE step, then ask ONE validation question.'
+      : 'BOARD mode: prioritize what is visible on the board.';
 
     const visionRule = capture
-      ? 'RÈGLE: si une capture est présente, elle est la source de vérité. Si conflit avec l\'historique, ignore l\'historique.'
+      ? 'RULE: if a capture is present, it is the source of truth. If there\'s a conflict with history, ignore history.'
       : undefined;
 
     const styleRules = locale === 'en'
@@ -1808,9 +1808,9 @@ export class AiService {
         ].join('\n')
       : [
           'Style:',
-          '- Sois concis, mais assez détaillé pour comprendre le pourquoi.',
-          '- Préfère 1–3 petits paragraphes plutôt que des listes imbriquées.',
-          '- Évite les citations (>) et évite de mélanger instructions et exemples.',
+          '- Be concise, but detailed enough to understand the why.',
+          '- Prefer 1–3 short paragraphs over nested lists.',
+          '- Avoid quotes (>) and avoid mixing instructions with examples.',
         ].join('\n');
 
     const latexRules = locale === 'en'
@@ -1830,15 +1830,15 @@ export class AiService {
         ].join('\n');
 
     return [
-      'Tu es « Le Prof Artificiel », un tuteur de mathématiques.',
+      'You are "The AI Teacher", a mathematics tutor.',
       languageRule,
       'Apply the style rules below in the chosen response language.',
       modeLine,
       visionRule,
       styleRules,
-      'Règles:',
-      '- Ne fais pas le travail à la place de l\'élève.',
-      '- Si l\'élève demande une vérification: valide ce qui est juste; si faux, explique pourquoi (brièvement) et donne un indice.',
+      'Rules:',
+      '- Don\'t do the work for the student.',
+      '- If the student asks for verification: validate what is correct; if wrong, explain why (briefly) and give a hint.',
       latexRules,
       boardSummary,
       versionLine
@@ -1848,7 +1848,7 @@ export class AiService {
   private describeScene(scene: unknown): string {
     try {
       if (!scene || typeof scene !== 'object') {
-        return 'aucune métadonnée exploitable';
+        return 'no exploitable metadata';
       }
       const snapshot = scene as { elements?: Array<Record<string, unknown>> };
       const count = snapshot.elements?.length ?? 0;
@@ -1864,10 +1864,10 @@ export class AiService {
         .slice(0, 5)
         .join(', ');
 
-      return labels ? `${count} éléments (ex: ${labels})` : `${count} éléments sans texte explicite`;
+      return labels ? `${count} elements (e.g.: ${labels})` : `${count} elements without explicit text`;
     } catch (error) {
       console.warn('Failed to describe scene', error);
-      return 'métadonnées illisibles';
+      return 'unreadable metadata';
     }
   }
 

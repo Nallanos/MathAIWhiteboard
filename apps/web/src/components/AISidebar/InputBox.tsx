@@ -117,7 +117,7 @@ export function InputBox({
             </p>
           ) : visibleSteps.length === 0 ? (
             <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Toutes les étapes sont terminées. Envoie un nouveau message pour générer un nouveau plan.
+              All steps completed. Send a new message to generate a new plan.
             </p>
           ) : (
             <div className="space-y-2">
@@ -153,7 +153,7 @@ export function InputBox({
                   className={`rounded-xl border p-2 ${isDark ? 'border-slate-800 bg-slate-950/20' : 'border-slate-200 bg-white'}`}
                 >
                   <summary className={`cursor-pointer select-none text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    {`Autres étapes (${remainingSteps.length})`}
+                    {`Other steps (${remainingSteps.length})`}
                   </summary>
 
                   <div className="mt-2 space-y-2">
@@ -218,20 +218,20 @@ export function InputBox({
             disabled={disabled}
             aria-label="Mode"
           >
-            <option value="board">Tableau</option>
-            <option value="tutor">Penser</option>
+            <option value="board">Board</option>
+            <option value="tutor">Think</option>
           </select>
 
           <select
             className={selectClass}
             disabled={disabled}
-            aria-label="Modèle"
+            aria-label="Model"
             value={model}
             onChange={(e) => onModelChange(e.target.value)}
           >
-            <option value="gemini-3-flash-preview">Gemini 3 Flash (gratuit)</option>
+            <option value="gemini-3-flash-preview">Gemini 3 Flash (free)</option>
             <option value="gemini-3-pro" disabled={!premiumAvailable}>
-              {premiumAvailable ? 'Gemini 3 Pro (1 crédit)' : 'Gemini 3 Pro (indispo)'}
+              {premiumAvailable ? 'Gemini 3 Pro (1 credit)' : 'Gemini 3 Pro (unavailable)'}
             </option>
           </select>
 
@@ -242,7 +242,7 @@ export function InputBox({
               onChange={(e) => onThinkingLevelChange(e.target.value)}
               disabled={disabled}
               aria-label="Thinking"
-              title="Niveau de réflexion (Gemini 3)"
+              title="Thinking level (Gemini 3)"
             >
               <option value="auto">Auto</option>
               <option value="low">Low</option>
@@ -253,7 +253,7 @@ export function InputBox({
 
           {typeof aiCredits === 'number' && (
             <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-              {`Crédits: ${aiCredits}`}
+              {`Credits: ${aiCredits}`}
             </span>
           )}
         </div>
@@ -263,8 +263,8 @@ export function InputBox({
             type="button"
             className={sendButtonClass}
             onClick={() => onStop()}
-            title="Arrêter"
-            aria-label="Arrêter"
+            title="Stop"
+            aria-label="Stop"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -282,8 +282,8 @@ export function InputBox({
             className={sendButtonClass}
             onClick={() => onSubmit()}
             disabled={!canSubmit}
-            title="Envoyer"
-            aria-label="Envoyer"
+            title="Send"
+            aria-label="Send"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

@@ -6,32 +6,7 @@ import { apiFetch } from '../lib/api';
 const FRANCOPHONE_LANGUAGES = ['fr', 'fr-FR', 'fr-CA', 'fr-BE', 'fr-CH'];
 
 function detectFrancophone(): boolean {
-  const browserLang = navigator.language || (navigator as any).userLanguage || '';
-  if (FRANCOPHONE_LANGUAGES.some((lang) => browserLang.startsWith(lang.split('-')[0]))) {
-    return true;
-  }
-
-  const languages = navigator.languages || [];
-  for (const lang of languages) {
-    if (lang.startsWith('fr')) {
-      return true;
-    }
-  }
-
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (tz.startsWith('Europe/Paris') || tz.startsWith('Europe/Brussels') || 
-        tz.startsWith('Europe/Zurich') || tz.startsWith('Africa/')) {
-      if (tz.startsWith('Africa/') && !browserLang.startsWith('fr')) {
-        return false;
-      }
-      return true;
-    }
-  } catch {
-    // Ignore timezone detection errors
-  }
-
-  return false;
+  return false; // Default to English
 }
 
 const content = {

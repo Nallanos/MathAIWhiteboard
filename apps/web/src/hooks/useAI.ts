@@ -168,7 +168,7 @@ export function useAI(
           details = '';
         }
       }
-      const prefix = response.status === 413 ? 'Capture trop lourde' : 'Capture échouée';
+      const prefix = response.status === 413 ? 'Capture too large' : 'Capture failed';
       throw new Error(details ? `${prefix}: ${details}` : prefix);
     }
 
@@ -302,7 +302,7 @@ export function useAI(
             boardId: options.boardId,
             role: 'assistant',
             content:
-              captureError ? `Impossible de capturer le tableau. (${captureError})` : "Impossible de capturer le tableau. Réessaie.",
+              captureError ? `Cannot capture the board. (${captureError})` : "Cannot capture the board. Try again.",
             createdAt: new Date().toISOString()
           }
         ]);
@@ -474,7 +474,7 @@ export function useAI(
         } catch (error) {
           if (controller.signal.aborted) {
             setMessages((prev) => 
-              prev.map(m => m.id === draftId ? { ...m, content: accumulatedText + '\n\n_[Interrompu]_' } : m)
+              prev.map(m => m.id === draftId ? { ...m, content: accumulatedText + '\n\n_[Interrupted]_' } : m)
             );
           } else {
             console.error('AI streaming failed', error);
@@ -525,7 +525,7 @@ export function useAI(
             throw new Error('AI response was not valid JSON');
           }
           
-          const assistantContent = result.message ?? 'Assistant en cours de préparation…';
+          const assistantContent = result.message ?? 'Assistant in preparation…';
 
           if (typeof result.aiCreditsRemaining === 'number') {
             setAiCredits(result.aiCreditsRemaining);

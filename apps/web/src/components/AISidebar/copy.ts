@@ -1,18 +1,18 @@
-const DEFAULT_LOCALE = 'fr' as const;
+const DEFAULT_LOCALE = 'en' as const;
 
 type Locale = typeof DEFAULT_LOCALE;
 
 const STRINGS = {
-  fr: {
+  en: {
     appName: 'Chat',
-    autoCaptureLabel: 'Capture auto pendant la consigne',
-    emptyState: "Aucune conversation pour l'instant. Envoyez une consigne. Demandez une correction, ou des exercices",
-    busyState: 'Analyse en cours…',
-    composerLabel: 'Nouvelle consigne',
-    composerPlaceholder: 'Décrivez ce que Le Prof Artificiel doit analyser ou générer',
-    composerCTA: 'Envoyer',
-    assistantLabel: 'Le Prof Artificiel',
-    userLabel: 'Vous'
+    autoCaptureLabel: 'Auto capture during instruction',
+    emptyState: "No conversation yet. Send an instruction. Ask for a correction, or exercises",
+    busyState: 'Analyzing…',
+    composerLabel: 'New instruction',
+    composerPlaceholder: 'Describe what The AI Teacher should analyze or generate',
+    composerCTA: 'Send',
+    assistantLabel: 'The AI Teacher',
+    userLabel: 'You'
   }
 } as const satisfies Record<Locale, Record<string, string>>;
 
