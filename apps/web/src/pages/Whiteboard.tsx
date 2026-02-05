@@ -81,6 +81,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     return window.innerWidth >= BREAKPOINT;
   });
   const isResizingRef = useRef(false);
+  const lastWidthRef = useRef(-1);
 
   const startResizing = useCallback((event?: React.MouseEvent) => {
     event?.preventDefault();
@@ -118,11 +119,23 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
+      
+      // If width hasn't changed, this is likely a fake resize event 
+      // (e.g. dispatched by our own nudge useEffect) or a height-only change.
+      // We ignore it to avoid resetting the sidebar state.
+      if (width === lastWidthRef.current) return;
+
+      const wasCompact = lastWidthRef.current < BREAKPOINT && lastWidthRef.current !== -1;
+      const isNowCompact = width < BREAKPOINT;
+      
+      lastWidthRef.current = width;
       setViewportWidth(width);
 
-      if (width < BREAKPOINT) {
-        // On small screens, close sidebar by default to maximize canvas
-        setSidebarOpen(false);
+      if (isNowCompact) {
+        // Only auto-close if we just transitioned to compact mode or it's the first run
+        if (!wasCompact) {
+          setSidebarOpen(false);
+        }
       } else {
         // On large screens, restore last known desktop sidebar state.
         try {
@@ -155,14 +168,18 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
     window.addEventListener("mouseup", stopResizing);
     window.addEventListener('blur', stopResizing);
     window.addEventListener("resize", handleResize);
+    
+    // Reset track width on mount/board change to ensure first run works
+    lastWidthRef.current = -1;
     handleResize();
+
     return () => {
       window.removeEventListener("mousemove", resize);
       window.removeEventListener("mouseup", stopResizing);
       window.removeEventListener('blur', stopResizing);
       window.removeEventListener("resize", handleResize);
     };
-  }, [resize, stopResizing]);
+  }, [resize, stopResizing, boardId]);
 
   useEffect(() => {
     if (isCompact) return;
