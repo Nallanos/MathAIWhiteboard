@@ -10,7 +10,6 @@ import { rootRoute } from './__root';
 import { Dashboard } from '../../pages/Dashboard';
 import { Whiteboard } from '../../pages/Whiteboard';
 import { requireAuth } from '../middleware/auth';
-import { VerificationBanner } from '../../components/VerificationBanner';
 
 export const protectedLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -18,12 +17,7 @@ export const protectedLayoutRoute = createRoute({
   beforeLoad: () => {
     requireAuth();
   },
-  component: () => (
-    <>
-      <VerificationBanner />
-      <Outlet />
-    </>
-  ),
+  component: () => <Outlet />,
 });
 
 export const dashboardRoute = createRoute({

@@ -18,10 +18,10 @@ export function isAuthenticated(): boolean {
 
 /**
  * Require authentication to access a route.
- * Throws a redirect to /signup if not authenticated.
+ * Throws a redirect to /login if not authenticated.
  */
 export function requireAuth(): void {
   if (!isAuthenticated()) {
-    throw redirect({ to: '/signup', search: { token: undefined } });
+    throw redirect({ to: '/login', search: { token: undefined } });
   }
 }

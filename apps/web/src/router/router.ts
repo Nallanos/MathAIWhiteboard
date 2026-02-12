@@ -14,7 +14,6 @@ import {
   dashboardRoute,
   whiteboardRoute,
   protectedLayoutRoute,
-  emailVerifiedRoute,
 } from './routes';
 
 // Build the route tree
@@ -27,7 +26,6 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   signupRoute,
   registerRedirectRoute,
-  emailVerifiedRoute,
 ]);
 
 // Create the router instance

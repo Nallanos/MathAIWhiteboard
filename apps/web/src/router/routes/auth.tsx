@@ -1,28 +1,14 @@
 /**
  * Auth Routes
  * 
- * Public routes for authentication (login, register).
+ * Public routes for authentication.
  * These routes redirect to dashboard if user is already authenticated.
  */
 
 import { createRoute, redirect } from '@tanstack/react-router';
 import { rootRoute } from './__root';
 import { Login } from '../../pages/Login';
-import { Register } from '../../pages/Register';
-import { EmailVerified } from '../../pages/EmailVerified';
 import { isAuthenticated } from '../middleware/auth';
-
-export const emailVerifiedRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/email-verified',
-  validateSearch: (search: Record<string, unknown>) => {
-    return {
-      success: (search.success as string) || undefined,
-      error: (search.error as string) || undefined,
-    };
-  },
-  component: EmailVerified,
-});
 
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -50,25 +36,19 @@ export const signupRoute = createRoute({
     };
   },
   beforeLoad: () => {
-    if (isAuthenticated()) {
-      throw redirect({ to: '/app' });
-    }
+    throw redirect({ to: '/login', search: { token: undefined } });
   },
-  component: RegisterPage,
+  component: LoginPage,
 });
 
 export const registerRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
   beforeLoad: () => {
-    throw redirect({ to: '/signup', search: { token: undefined } });
+    throw redirect({ to: '/login', search: { token: undefined } });
   }
 });
 
 function LoginPage() {
   return <Login />;
-}
-
-function RegisterPage() {
-  return <Register />;
 }
