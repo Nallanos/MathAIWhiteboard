@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "strict": true,
     "resolveJsonModule": true,
+    "jsx": "react-jsx",
     "declaration": false,
     "declarationMap": false,
     "sourceMap": true,

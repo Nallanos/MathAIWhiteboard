@@ -44,7 +44,7 @@ export function Register() {
           navigate({ to: '/app' });
         } catch (err: any) {
           setError(err.message);
-          navigate({ to: '/signup', replace: true });
+          navigate({ to: '/signup', search: { token: undefined }, replace: true });
         } finally {
           setDiscordLoading(false);
         }
@@ -229,7 +229,7 @@ export function Register() {
           </div>
           
           <div className="text-center">
-            <Link to="/login" className="text-sm text-indigo-600 hover:text-indigo-500">
+            <Link to="/login" search={{ token: undefined }} className="text-sm text-indigo-600 hover:text-indigo-500">
               Already have an account? Sign in
             </Link>
           </div>

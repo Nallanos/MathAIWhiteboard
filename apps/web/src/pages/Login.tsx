@@ -44,7 +44,7 @@ export function Login() {
         } catch (err: any) {
           setError(err.message);
           // Remove token from URL to avoid repeating the error
-          navigate({ to: '/login', replace: true });
+          navigate({ to: '/login', search: { token: undefined }, replace: true });
         } finally {
           setDiscordLoading(false);
         }
@@ -222,7 +222,7 @@ export function Login() {
           </div>
 
           <div className="text-center">
-            <Link to="/signup" className="text-sm text-indigo-600 hover:text-indigo-500">
+            <Link to="/signup" search={{ token: undefined }} className="text-sm text-indigo-600 hover:text-indigo-500">
               No account? Create an account
             </Link>
           </div>

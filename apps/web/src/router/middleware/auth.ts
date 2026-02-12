@@ -22,6 +22,6 @@ export function isAuthenticated(): boolean {
  */
 export function requireAuth(): void {
   if (!isAuthenticated()) {
-    throw redirect({ to: '/signup' });
+    throw redirect({ to: '/signup', search: { token: undefined } });
   }
 }

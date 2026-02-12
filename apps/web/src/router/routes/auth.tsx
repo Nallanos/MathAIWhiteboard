@@ -61,7 +61,7 @@ export const registerRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
   beforeLoad: () => {
-    throw redirect({ to: '/signup' });
+    throw redirect({ to: '/signup', search: { token: undefined } });
   }
 });
 
