@@ -151,7 +151,7 @@ export function AISidebar({
     const when = Number.isFinite(dt.getTime())
       ? conversationDateFormatter.format(dt)
       : `Chat ${index + 1}`;
-    return c.status === 'active' ? `${when} (actif)` : when;
+    return c.status === 'active' ? `${when} (active)` : when;
   };
 
   const handleSubmit = async () => {
@@ -187,8 +187,8 @@ export function AISidebar({
               value={activeConversationId ?? conversations[0]?.id}
               onChange={(e) => onConversationChange?.(e.target.value)}
               disabled={isBusy}
-              aria-label="Historique"
-              title="Historique"
+              aria-label="History"
+              title="History"
             >
               {conversations.map((c, idx) => (
                 <option key={c.id} value={c.id}>

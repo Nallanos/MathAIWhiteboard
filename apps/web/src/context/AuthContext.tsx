@@ -8,6 +8,10 @@ interface User {
   email: string;
   displayName: string;
   aiCredits?: number;
+  emailVerified: boolean;
+  avatarUrl?: string | null;
+  discordId?: string | null;
+  plan?: string;
 }
 
 interface AuthContextType {
@@ -59,7 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: data.user.id,
         email: data.user.email,
         displayName: data.user.displayName,
-        aiCredits: data.user.aiCredits
+        aiCredits: data.user.aiCredits,
+        emailVerified: !!data.user.emailVerified,
+        avatarUrl: data.user.avatarUrl,
+        discordId: data.user.discordId,
+        plan: data.user.plan
       };
 
       localStorage.setItem('authUser', JSON.stringify(nextUser));
@@ -111,4 +119,8 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+export function useOptionalAuth() {
+  return useContext(AuthContext);
 }

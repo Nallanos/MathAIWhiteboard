@@ -276,7 +276,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
         console.error('Failed to rename board', e);
         setBoardTitle(previous);
         setBoardTitleDraft(previous);
-        alert('Impossible de renommer le board.');
+        alert('Failed to rename the board.');
       }
     },
     [token, boardId, boardTitle]
@@ -467,7 +467,7 @@ export function Whiteboard({ boardId }: WhiteboardProps) {
   );
 
   const handleBack = () => {
-    navigate({ to: '/' });
+    navigate({ to: '/app' });
   };
 
   return (

@@ -5,27 +5,36 @@
  * These routes redirect to login if user is not authenticated.
  */
 
-import { createRoute, redirect } from '@tanstack/react-router';
+import { createRoute, redirect, Outlet } from '@tanstack/react-router';
 import { rootRoute } from './__root';
 import { Dashboard } from '../../pages/Dashboard';
 import { Whiteboard } from '../../pages/Whiteboard';
 import { requireAuth } from '../middleware/auth';
+import { VerificationBanner } from '../../components/VerificationBanner';
 
-export const dashboardRoute = createRoute({
+export const protectedLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/app',
+  id: 'protected',
   beforeLoad: () => {
     requireAuth();
   },
+  component: () => (
+    <>
+      <VerificationBanner />
+      <Outlet />
+    </>
+  ),
+});
+
+export const dashboardRoute = createRoute({
+  getParentRoute: () => protectedLayoutRoute,
+  path: '/app',
   component: DashboardPage,
 });
 
 export const whiteboardRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => protectedLayoutRoute,
   path: '/app/board/$boardId',
-  beforeLoad: () => {
-    requireAuth();
-  },
   component: WhiteboardPage,
 });
 

@@ -2,6 +2,7 @@
   "extends": "@mathboard/config/tsconfig",
   "compilerOptions": {
     "baseUrl": "./",
+    "jsx": "react-jsx",
     "paths": {
       "@mathboard/shared": ["../../packages/shared/src"],
       "@mathboard/shared/*": ["../../packages/shared/src/*"]

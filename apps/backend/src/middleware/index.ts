@@ -25,3 +25,6 @@ export { createRateLimiter } from './rate-limiter.js';
 
 // Body validation middleware
 export { createBodyValidator } from './validate-body.js';
+
+// Feature gating middleware
+export { createFeatureGate } from './feature-gate.js';

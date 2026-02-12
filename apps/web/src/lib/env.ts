@@ -17,4 +17,8 @@ export const env = {
   posthogDefaults: import.meta.env.VITE_POSTHOG_DEFAULTS as string | undefined,
   posthogOptOutByDefault:
     (import.meta.env.VITE_POSTHOG_OPT_OUT_BY_DEFAULT as string | undefined) === 'true',
+  // Stripe
+  stripePublishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined,
+  stripeProMonthlyPriceId: import.meta.env.VITE_STRIPE_PRO_MONTHLY_PRICE_ID as string | undefined,
+  stripeProYearlyPriceId: import.meta.env.VITE_STRIPE_PRO_YEARLY_PRICE_ID as string | undefined,
 };

@@ -1,3 +1,5 @@
+import type { SubscriptionPlan as StripePlan, SubscriptionState as StripeSubState } from './stripe.js';
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -6,11 +8,5 @@ export interface UserProfile {
   locale: 'fr' | 'en';
 }
 
-export type SubscriptionPlan = 'free' | 'pro';
-
-export interface SubscriptionState {
-  plan: SubscriptionPlan;
-  boardsPerDayLimit: number;
-  aiMessagesPerDayLimit: number;
-  renewsAt: string | null;
-}
+// Re-export from stripe.ts for backward compatibility
+export type { SubscriptionPlan, SubscriptionState } from './stripe.js';

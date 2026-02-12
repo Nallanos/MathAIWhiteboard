@@ -17,6 +17,8 @@ import { registerMessageRoutes } from './routes/messages.js';
 import { registerStripeRoutes } from './routes/stripe.js';
 import { registerCaptureRoutes } from './routes/captures.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerDiscordAuthRoutes } from './routes/discord-auth.js';
+import { registerEmailRoutes } from './routes/email.js';
 import { registerTutorRoutes } from './routes/tutor.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerLocaleRoutes } from './routes/locale.js';
@@ -34,6 +36,9 @@ import { AiService } from './services/ai-service.js';
 import { BoardService } from './services/board-service.js';
 import { MessageService } from './services/message-service.js';
 import { AuthService } from './services/auth-service.js';
+import { StripeService } from './services/stripe-service.js';
+import { CreditsService } from './services/credits-service.js';
+import { EmailService } from './services/email-service.js';
 import { shutdownPostHog } from './lib/posthog.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -106,6 +111,37 @@ async function bootstrap() {
   const boardService = new BoardService({ db });
   const messageService = new MessageService({ db });
   const authService = new AuthService(db);
+  const creditsService = new CreditsService({ db });
+
+  // Initialize Email service if configured
+  const emailEnabled = Boolean(config.resendApiKey);
+  const emailService = emailEnabled
+    ? new EmailService(db, {
+        resendApiKey: config.resendApiKey!,
+        fromEmail: config.emailFromAddress!,
+        fromName: config.emailFromName!,
+        appUrl: config.frontendUrl
+      })
+    : null;
+
+  if (!emailEnabled) {
+    console.warn('[env] RESEND_API_KEY is not set: Email service will be disabled');
+  }
+
+  // Initialize Stripe service if configured
+  const stripeEnabled = Boolean(config.stripeSecretKey && config.stripeWebhookSecret);
+  const stripeService = stripeEnabled
+    ? new StripeService({
+        db,
+        stripeSecretKey: config.stripeSecretKey!,
+        stripeWebhookSecret: config.stripeWebhookSecret!,
+        frontendUrl: config.frontendUrl,
+        proPriceIds: {
+          monthly: config.stripeProMonthlyPriceId || '',
+          yearly: config.stripeProYearlyPriceId || ''
+        }
+      })
+    : null;
 
   // Create middleware instances
   const authMiddleware = createAuthMiddleware(authService);
@@ -147,7 +183,41 @@ async function bootstrap() {
 
   // Register routes
   registerLocaleRoutes({ app });
-  registerAuthRoutes({ app, authService, googleClientId: config.googleClientId });
+  registerAuthRoutes({ 
+    app, 
+    authService, 
+    emailService, 
+    googleClientId: config.googleClientId 
+  });
+  
+  // Register Discord OAuth if configured
+  if (config.discordClientId && config.discordClientSecret) {
+    registerDiscordAuthRoutes({
+      app,
+      authService,
+      emailService: emailService || undefined,
+      discordConfig: {
+        clientId: config.discordClientId,
+        clientSecret: config.discordClientSecret,
+        redirectUri: config.discordRedirectUri!
+      }
+    });
+  } else {
+    console.warn('[env] DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET is not set: Discord OAuth will be disabled');
+  }
+
+  // Register Email routes if configured
+  if (emailService) {
+    registerEmailRoutes({
+      app,
+      emailService,
+      authService,
+      db,
+      resendWebhookSecret: config.resendWebhookSecret,
+      frontendUrl: config.frontendUrl
+    });
+  }
+
   registerMeRoutes({ app, authMiddleware, db });
   registerCaptureRoutes({ app, service: captureService, config, authMiddleware });
   if (aiService) {
@@ -168,7 +238,23 @@ async function bootstrap() {
   registerBoardRoutes({ app, boardService, authMiddleware });
   registerMessageRoutes({ app, messageService, authMiddleware });
   registerTutorRoutes({ app, authMiddleware, db });
-  registerStripeRoutes(app);
+  
+  // Register Stripe routes if configured
+  if (stripeService) {
+    registerStripeRoutes({ app, authMiddleware, stripeService, creditsService, db });
+  } else {
+    console.warn('[env] STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET is not set: Stripe routes will be disabled');
+    // Provide basic credits endpoint even without Stripe
+    app.get('/api/me/credits', authMiddleware, async (req: express.Request, res: express.Response) => {
+      try {
+        const authReq = req as any;
+        const credits = await creditsService.getBalance(authReq.user.id);
+        return res.status(200).json(credits);
+      } catch (error) {
+        return res.status(500).json({ error: 'Failed to fetch credits' });
+      }
+    });
+  }
 
   // Serve static frontend files in production
   const publicPath = join(__dirname, '..', 'public');

@@ -7,11 +7,24 @@ export interface EnvConfig {
   openaiKey?: string;
   anthropicKey?: string;
   stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
+  stripeProMonthlyPriceId?: string;
+  stripeProYearlyPriceId?: string;
+  frontendUrl: string;
   googleClientId: string;
   databaseUrl: string;
   captureStorageDir: string;
   captureImageMaxBytes: number;
   captureSceneMaxBytes: number;
+  // Discord OAuth
+  discordClientId?: string;
+  discordClientSecret?: string;
+  discordRedirectUri?: string;
+  // Email (Resend)
+  resendApiKey?: string;
+  resendWebhookSecret?: string;
+  emailFromAddress?: string;
+  emailFromName?: string;
 }
 
 export function loadEnv(): EnvConfig {
@@ -28,6 +41,10 @@ export function loadEnv(): EnvConfig {
     OPENAI_API_KEY,
     ANTHROPIC_API_KEY,
     STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET,
+    STRIPE_PRO_MONTHLY_PRICE_ID,
+    STRIPE_PRO_YEARLY_PRICE_ID,
+    FRONTEND_URL = 'http://localhost:5173',
     GOOGLE_CLIENT_ID = '',
     VITE_GOOGLE_CLIENT_ID = '',
     DATABASE_URL = '',
@@ -35,7 +52,16 @@ export function loadEnv(): EnvConfig {
     POSTGRES_URL = '',
     CAPTURE_STORAGE_DIR = './data/captures',
     CAPTURE_IMAGE_MAX_BYTES = '5242880',
-    CAPTURE_SCENE_MAX_BYTES = '1048576'
+    CAPTURE_SCENE_MAX_BYTES = '1048576',
+    // Discord OAuth
+    DISCORD_CLIENT_ID = '',
+    DISCORD_CLIENT_SECRET = '',
+    DISCORD_REDIRECT_URI = '',
+    // Email (Resend)
+    RESEND_API_KEY = '',
+    RESEND_WEBHOOK_SECRET = '',
+    EMAIL_FROM_ADDRESS = 'noreply@whiteboardai.app',
+    EMAIL_FROM_NAME = 'WhiteboardAI'
   } = process.env;
 
   const primary = (DATABASE_URL || '').trim();
@@ -111,11 +137,24 @@ export function loadEnv(): EnvConfig {
     openaiKey: OPENAI_API_KEY,
     anthropicKey: ANTHROPIC_API_KEY,
     stripeSecretKey: STRIPE_SECRET_KEY,
+    stripeWebhookSecret: STRIPE_WEBHOOK_SECRET,
+    stripeProMonthlyPriceId: STRIPE_PRO_MONTHLY_PRICE_ID,
+    stripeProYearlyPriceId: STRIPE_PRO_YEARLY_PRICE_ID,
+    frontendUrl: FRONTEND_URL,
     googleClientId: resolvedGoogleClientId,
     databaseUrl: resolvedDatabaseUrl,
     captureStorageDir: CAPTURE_STORAGE_DIR,
     captureImageMaxBytes: parseInt(CAPTURE_IMAGE_MAX_BYTES, 10),
-    captureSceneMaxBytes: parseInt(CAPTURE_SCENE_MAX_BYTES, 10)
+    captureSceneMaxBytes: parseInt(CAPTURE_SCENE_MAX_BYTES, 10),
+    // Discord OAuth
+    discordClientId: DISCORD_CLIENT_ID || undefined,
+    discordClientSecret: DISCORD_CLIENT_SECRET || undefined,
+    discordRedirectUri: DISCORD_REDIRECT_URI || `${FRONTEND_URL}/api/auth/discord/callback`,
+    // Email (Resend)
+    resendApiKey: RESEND_API_KEY || undefined,
+    resendWebhookSecret: RESEND_WEBHOOK_SECRET || undefined,
+    emailFromAddress: EMAIL_FROM_ADDRESS,
+    emailFromName: EMAIL_FROM_NAME
   };
 }
 

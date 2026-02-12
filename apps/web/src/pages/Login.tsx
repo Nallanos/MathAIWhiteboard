@@ -6,9 +6,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, Link } from '@tanstack/react-router';
+import { useNavigate, Link, useSearch } from '@tanstack/react-router';
 import { useAuth } from '../context/AuthContext';
 import { env } from '../lib/env';
+import { DiscordLoginButton } from '../components/DiscordLoginButton';
+import { apiFetch } from '../lib/api';
 
 declare global {
   interface Window {
@@ -24,7 +26,33 @@ export function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [discordLoading, setDiscordLoading] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const search = useSearch({ from: '/login' }) as { token?: string };
+
+  useEffect(() => {
+    const handleUrlToken = async () => {
+      if (search.token) {
+        setDiscordLoading(true);
+        try {
+          const res = await apiFetch('/api/me', { token: search.token });
+          if (!res.ok) throw new Error('Failed to verify token');
+          
+          const data = await res.json();
+          login(search.token, data.user);
+          navigate({ to: '/app' });
+        } catch (err: any) {
+          setError(err.message);
+          // Remove token from URL to avoid repeating the error
+          navigate({ to: '/login', replace: true });
+        } finally {
+          setDiscordLoading(false);
+        }
+      }
+    };
+
+    handleUrlToken();
+  }, [search.token, login, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,14 +207,18 @@ export function Login() {
             <div className="h-px flex-1 bg-gray-200" />
           </div>
 
-          <div>
-            {env.googleClientId ? (
-              <div ref={googleButtonRef} className="flex justify-center" aria-busy={googleLoading} />
-            ) : (
-              <div className="rounded-md bg-gray-100 px-3 py-2 text-center text-sm text-gray-500">
-                Google login not configured
-              </div>
-            )}
+          <div className="space-y-3 max-w-[320px] mx-auto w-full">
+            <div className="w-full">
+              {env.googleClientId ? (
+                <div ref={googleButtonRef} className="w-full min-h-[40px]" aria-busy={googleLoading} />
+              ) : (
+                <div className="rounded-md bg-gray-100 px-3 py-2 text-center text-sm text-gray-500 w-full">
+                  Google login not configured
+                </div>
+              )}
+            </div>
+            
+            <DiscordLoginButton loading={discordLoading || googleLoading || loading} />
           </div>
 
           <div className="text-center">

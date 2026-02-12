@@ -13,16 +13,21 @@ import {
   landingRoute,
   dashboardRoute,
   whiteboardRoute,
+  protectedLayoutRoute,
+  emailVerifiedRoute,
 } from './routes';
 
 // Build the route tree
 const routeTree = rootRoute.addChildren([
   landingRoute,
-  dashboardRoute,
-  whiteboardRoute,
+  protectedLayoutRoute.addChildren([
+    dashboardRoute,
+    whiteboardRoute,
+  ]),
   loginRoute,
   signupRoute,
   registerRedirectRoute,
+  emailVerifiedRoute,
 ]);
 
 // Create the router instance

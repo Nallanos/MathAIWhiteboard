@@ -42,7 +42,12 @@ export function registerMeRoutes({ app, authMiddleware, db }: Dependencies): voi
         id: user.id,
         email: user.email,
         displayName: user.displayName,
-        aiCredits: user.aiCredits
+        aiCredits: user.aiCredits,
+        emailVerified: user.emailVerified,
+        avatarUrl: user.avatarUrl,
+        discordId: user.discordId,
+        plan: user.plan,
+        subscriptionStatus: user.subscriptionStatus
       }
     });
   });

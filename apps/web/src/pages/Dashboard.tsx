@@ -23,6 +23,7 @@ export function Dashboard() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -60,7 +61,7 @@ export function Dashboard() {
 
   const renameBoard = async (board: Board) => {
     if (!token) return;
-    const nextTitle = window.prompt('Nouveau nom du board :', board.title);
+    const nextTitle = window.prompt('New board title:', board.title);
     if (nextTitle === null) return;
     const trimmed = nextTitle.trim();
     if (!trimmed || trimmed === board.title) return;
@@ -88,7 +89,42 @@ export function Dashboard() {
       console.error('Failed to rename board', e);
       // Revert
       setBoards((prev) => prev.map((b) => (b.id === board.id ? board : b)));
-      alert('Impossible de renommer le board.');
+      alert('Failed to rename the board.');
+    }
+  };
+
+  const deleteAllBoards = async () => {
+    if (!token || boards.length === 0) return;
+    const confirmed = window.confirm('Supprimer tous les boards ? Cette action est irreversible.');
+    if (!confirmed) return;
+
+    setDeletingAll(true);
+    try {
+      const results = await Promise.allSettled(
+        boards.map((board) =>
+          apiFetch(`/api/boards/${board.id}`, {
+            method: 'DELETE',
+            token
+          })
+        )
+      );
+
+      const failedIds = results
+        .map((result, index) => ({ result, id: boards[index].id }))
+        .filter(({ result }) => result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.ok))
+        .map(({ id }) => id);
+
+      if (failedIds.length > 0) {
+        setBoards((prev) => prev.filter((board) => failedIds.includes(board.id)));
+        alert('Certains boards n\'ont pas pu etre supprimes.');
+      } else {
+        setBoards([]);
+      }
+    } catch (e) {
+      console.error('Failed to delete boards', e);
+      alert('Impossible de supprimer tous les boards.');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -97,8 +133,8 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <header className="bg-white shadow sticky top-0 z-10">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">My Whiteboards</h1>
           <div className="flex items-center gap-4">
@@ -114,6 +150,17 @@ export function Dashboard() {
       </header>
       <main>
         <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+          {boards.length > 0 && (
+            <div className="mb-4 flex items-center justify-end">
+              <button
+                onClick={deleteAllBoards}
+                disabled={deletingAll}
+                className="text-xs font-semibold text-red-600 hover:text-red-500 disabled:opacity-60"
+              >
+                {deletingAll ? 'Suppression...' : 'Supprimer tous les boards'}
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {/* Create New Card */}
             <button

@@ -19,6 +19,8 @@
     "@anthropic-ai/sdk": "^0.70.1",
     "@google/genai": "^1.0.0",
     "@mathboard/shared": "workspace:*",
+    "@react-email/components": "^1.0.7",
+    "@types/react": "^18.2.67",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -33,7 +35,11 @@
     "openai": "^6.9.1",
     "pg": "^8.11.5",
     "posthog-node": "^5.17.4",
+    "react": "^18.3.1",
+    "react-email": "^5.2.7",
+    "resend": "^6.9.1",
     "socket.io": "^4.7.5",
+    "stripe": "^20.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

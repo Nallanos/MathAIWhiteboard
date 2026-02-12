@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import { z } from 'zod';
 import type { AuthService } from '../services/auth-service.js';
+import type { EmailService } from '../services/email-service.js';
 import { OAuth2Client } from 'google-auth-library';
 import { captureServerEvent } from '../lib/posthog.js';
 import https from 'node:https';
@@ -24,10 +25,11 @@ const googleAuthSchema = z.object({
 interface Dependencies {
   app: Express;
   authService: AuthService;
+  emailService: EmailService | null;
   googleClientId: string;
 }
 
-export function registerAuthRoutes({ app, authService, googleClientId }: Dependencies): void {
+export function registerAuthRoutes({ app, authService, emailService, googleClientId }: Dependencies): void {
   const allowedAudiences = String(googleClientId || '')
     .split(',')
     .map((value) => value.trim())
@@ -326,6 +328,12 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
         method: 'password',
       });
 
+      // Send welcome email (async)
+      if (emailService) {
+        emailService.sendWelcomeEmail(result.user.id, result.user.email, result.user.displayName)
+          .catch(err => console.error('[Auth] Failed to send welcome email:', err));
+      }
+
       res.status(201).json(result);
     } catch (error: any) {
       if (error.message === 'User already exists') {
@@ -474,7 +482,14 @@ export function registerAuthRoutes({ app, authService, googleClientId }: Depende
         email: result.user.email,
         displayName: result.user.displayName,
         method: 'google',
+        isNewUser: result.isNewUser
       });
+
+      // Send welcome email for new users (async)
+      if (result.isNewUser && emailService) {
+        emailService.sendWelcomeEmail(result.user.id, result.user.email, result.user.displayName)
+          .catch(err => console.error('[Auth Google] Failed to send welcome email:', err));
+      }
 
       return res.json(result);
     } catch (error: any) {

@@ -209,8 +209,8 @@ export function InputBox({
         />
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="mt-2 flex items-center justify-between gap-2 overflow-hidden">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
           <select
             className={selectClass}
             value={chatMode}
@@ -223,7 +223,7 @@ export function InputBox({
           </select>
 
           <select
-            className={selectClass}
+            className={`${selectClass} max-w-[130px]`}
             disabled={disabled}
             aria-label="Model"
             value={model}
@@ -252,55 +252,57 @@ export function InputBox({
           )}
 
           {typeof aiCredits === 'number' && (
-            <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               {`Credits: ${aiCredits}`}
             </span>
           )}
         </div>
 
-        {isStreaming && onStop ? (
-          <button
-            type="button"
-            className={sendButtonClass}
-            onClick={() => onStop()}
-            title="Stop"
-            aria-label="Stop"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="currentColor"
+        <div className="flex-shrink-0">
+          {isStreaming && onStop ? (
+            <button
+              type="button"
+              className={sendButtonClass}
+              onClick={() => onStop()}
+              title="Stop"
+              aria-label="Stop"
             >
-              <rect x="6" y="6" width="12" height="12" />
-            </svg>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={sendButtonClass}
-            onClick={() => onSubmit()}
-            disabled={!canSubmit}
-            title="Send"
-            aria-label="Send"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <rect x="6" y="6" width="12" height="12" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={sendButtonClass}
+              onClick={() => onSubmit()}
+              disabled={!canSubmit}
+              title="Send"
+              aria-label="Send"
             >
-              <path d="M22 2L11 13" />
-              <path d="M22 2l-7 20-4-9-9-4 20-7z" />
-            </svg>
-          </button>
-        )}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M22 2L11 13" />
+                <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
