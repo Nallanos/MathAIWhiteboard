@@ -84,21 +84,6 @@ export const WelcomeEmail: React.FC<WelcomeEmailProps> = ({
 
           <Hr style={hr} />
 
-          {/* Email Verification Section */}
-          <Section style={verificationSection}>
-            <Text style={verificationText}>
-              📧 <strong>Vérifiez votre email</strong> (optionnel)
-            </Text>
-            <Text style={smallText}>
-              Bien que ce ne soit pas obligatoire, vérifier votre email nous permet 
-              de mieux sécuriser votre compte.
-            </Text>
-            <Button style={secondaryButton} href={verificationUrl}>
-              Vérifier mon email
-            </Button>
-          </Section>
-
-          <Hr style={hr} />
 
           {/* Footer */}
           <Section style={footer}>

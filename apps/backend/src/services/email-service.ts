@@ -77,11 +77,8 @@ export class EmailService {
 
   async sendWelcomeEmail(userId: string, email: string, displayName: string): Promise<SendEmailResult> {
     try {
-      // Create verification token
-      const verificationToken = await this.createEmailToken(userId, 'verification', 72); // 72h expiry
       const unsubscribeToken = await this.createEmailToken(userId, 'unsubscribe', 24 * 365); // 1 year
 
-      const verificationUrl = `${this.config.appUrl}/verify-email?token=${verificationToken}`;
       const unsubscribeUrl = `${this.config.appUrl}/api/email/unsubscribe?token=${unsubscribeToken}`;
 
       const { data, error } = await this.resend.emails.send({
@@ -90,7 +87,7 @@ export class EmailService {
         subject: `Bienvenue sur WhiteboardAI, ${displayName}! 🎨`,
         react: WelcomeEmail({
           displayName,
-          verificationUrl,
+          verificationUrl: '', // No longer used in template
           unsubscribeUrl,
           appUrl: this.config.appUrl
         }),

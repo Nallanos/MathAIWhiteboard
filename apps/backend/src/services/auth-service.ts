@@ -48,7 +48,8 @@ export class AuthService {
       .values({
         email,
         passwordHash,
-        displayName
+        displayName,
+        emailVerified: true
       })
       .returning();
 
